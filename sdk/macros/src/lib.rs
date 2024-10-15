@@ -13,13 +13,6 @@ pub fn module(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let expanded = quote! {
         #input
 
-        impl Module for #struct_name {
-            fn init(&self, context: Arc<Context>) -> Result<()> {
-                println!(concat!(stringify!(#struct_name), " initialized"));
-                Ok(())
-            }
-        }
-
         impl #struct_name {
             pub fn new() -> Self {
                 Self { }

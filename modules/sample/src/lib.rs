@@ -5,7 +5,7 @@ use anyhow::Result;
 #[module]
 pub struct SampleModule;
 
-impl SampleModule {
+impl Module for SampleModule {
     fn init(&self, context: Arc<Context>) -> Result<()> {
         println!("SampleModule initialized!");
 
