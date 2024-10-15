@@ -1,0 +1,15 @@
+# Sample Caryatid framework module
+
+[package]
+name = "sample-module"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+caryatid-sdk = { path = "../../sdk" }
+anyhow = "1.0"
+tokio = { version = "1", features = ["full"] }
+serde_json = "1.0"
+
+[lib]
+crate-type = ["cdylib"]

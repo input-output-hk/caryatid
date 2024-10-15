@@ -1,0 +1,10 @@
+# Caryatid framework workspace root
+
+[workspace]
+members = [
+    "process",         # Executable for a single process
+    "sdk",             # The SDK library for modules
+    "modules/sample",  # An example module
+]
+
+resolver = "2"

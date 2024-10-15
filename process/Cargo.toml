@@ -1,0 +1,15 @@
+# Caryatid process executable
+[package]
+name = "caryatid-process"
+version = "0.1.0"
+edition = "2021"
+authors = ["Paul Clark <paul.clark@iohk.io>"]
+description = "The Caryatid framework process, containing pluggable modules"
+
+[dependencies]
+caryatid-sdk = { path = "../sdk" }
+libloading = "0.7"
+futures = "0.3"
+anyhow = "1.0"
+tokio = { version = "1", features = ["full"] }
+serde_json = "1.0"
