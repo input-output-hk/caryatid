@@ -1,5 +1,12 @@
 # Top-level configuration for Caryatid process
 
+[paths]
+modules = "./target/debug"
+
+[modules.sample]
+lib = "libsample_module.so"
+foo = "bar"
+
 [message-bus.in-memory]
 workers = 4
 
