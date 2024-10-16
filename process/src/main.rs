@@ -55,16 +55,24 @@ async fn main() -> Result<()> {
     for (key, _value) in modules_section.into_iter() {
         println!("Found module '{}'", key);
 
+        // Get the module's config
+        let module_config = get_config(&context.config,
+                                       format!("modules.{}", key).as_str());
+
+        // Use their specified name, or default it
+        let lib_name = module_config.get_string("lib")
+            .unwrap_or(format!("lib{}_module.so", key));
+
         // Load the module
-        match LoadedModule::load(format!("lib{}_module.so", key), &context) {
+        match LoadedModule::load(lib_name, &context, &module_config) {
             Ok(module) => {
                 println!("Created module {}: {}",
                          module.module.get_name(),
                          module.module.get_description());
                 modules.push(module)
             },
-            Err(_) => {
-                println!("Can't load module {}", key);
+            Err(e) => {
+                println!("Can't load module {}: {}", key, e);
             }
         }
     }

@@ -38,7 +38,8 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input
 
         impl Module for #struct_name {
-            fn init(&self, context: &Context) -> anyhow::Result<()> {
+            fn init(&self, context: &Context, config: &Config)
+                    -> anyhow::Result<()> {
                 Ok(())
             }
 
@@ -52,9 +53,10 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         #[no_mangle]
-        pub extern "C" fn create_module(context: &Context) -> *mut dyn Module {
+        pub extern "C" fn create_module(context: &Context, config: &Config)
+                                        -> *mut dyn Module {
             let module = #struct_name {};
-            module.init(context).unwrap();
+            module.init(context, config).unwrap();
             Box::into_raw(Box::new(module))
         }
     };
