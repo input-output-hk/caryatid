@@ -3,8 +3,11 @@ use tokio::sync::{mpsc, Mutex};
 use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::Result;
+use config::Config;
 use futures::future::{BoxFuture, FutureExt};
 use crate::message_bus::{MessageBus, BoxedObserverFn, MessageBounds};
+
+const DEFAULT_WORKERS: i64 = 4;
 
 pub struct InMemoryBus<M: MessageBounds> {
 
@@ -16,7 +19,10 @@ pub struct InMemoryBus<M: MessageBounds> {
 }
 
 impl<M: MessageBounds> InMemoryBus<M> {
-    pub fn new(num_workers: usize) -> Self {
+    pub fn new(config: &Config) -> Self {
+        let num_workers = config.get_int("workers")
+            .unwrap_or(DEFAULT_WORKERS) as usize;
+
         let (sender, mut receiver) = mpsc::channel::<(String, Arc<M>)>(100);
 
         let observers: Arc<Mutex<HashMap<String,

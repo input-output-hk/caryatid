@@ -6,15 +6,46 @@ use anyhow::Result;
 use std::sync::Arc;
 use libloading::{Library, Symbol};
 use serde_json::json;
+use config::{Config, File, Environment};
 
+/// Helper function to extract a sub-config as a new Config object
+/// Defaults to an empty Config if the path does not exist.
+fn get_config(config: &Config, path: &str) -> Config {
+    // Try to extract the sub-config as a table
+    match config.get_table(path) {
+        Ok(sub_table) => {
+            // Use ConfigBuilder to create a new Config with the sub-table
+            let mut builder = Config::builder();
+            for (key, value) in sub_table.into_iter() {
+                builder = builder.set_override(key, value).unwrap();
+            }
+            builder.build().unwrap_or_default()
+        },
+        Err(_) => {
+            // Return an empty Config if the path doesn't exist
+            Config::default()
+        }
+    }
+}
+
+/// Main process
 #[tokio::main]
 async fn main() -> Result<()> {
 
-    // Create an in-memory message bus with 4 workers
-    let message_bus = Arc::new(InMemoryBus::new(4));
+    // Read the config
+    let config = Config::builder()
+        .add_source(File::with_name("process/caryatid"))
+        .add_source(Environment::with_prefix("CARYATID"))
+        .build()
+        .unwrap();
+
+    // Create an in-memory message bus
+    let message_bus = Arc::new(InMemoryBus::new(
+        &get_config(&config, "message_bus.in_memory")));
 
     // Create the shared context
-    let context = Context::new(message_bus.clone());
+    let context = Context::new(Arc::new(config),
+                               message_bus.clone());
 
     // Dynamically load the module
     unsafe {

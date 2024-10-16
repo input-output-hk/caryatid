@@ -1,0 +1,5 @@
+# Top-level configuration for Caryatid process
+
+[message-bus.in-memory]
+workers = 4
+
