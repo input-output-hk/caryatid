@@ -23,6 +23,9 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
     // Register an observer function - note sync
     fn register_observer(&self, topic: &str, observer: BoxedObserverFn<M>)
                          -> Result<()>;
+
+    // Shut down
+    fn shutdown(&self);
 }
 
 // Extension trait to sugar registration - needed because MessageBus must be

@@ -100,9 +100,13 @@ async fn main() -> Result<()> {
     // Ensure all logging is done
     log::logger().flush();
 
+    // Shutdown the message bus and all subscriptions (before losing modules)
+    message_bus.shutdown();
+
     // Clear the modules to drop all the loaded libraries
     modules.clear();
 
+    // Bye!
     info!("Exiting");
     Ok(())
 }

@@ -100,5 +100,13 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
             Ok(())
         })
     }
+
+    // Shut down
+    fn shutdown(&self) {
+       tokio::task::block_in_place(|| {
+           let mut observers = self.observers.blocking_lock();
+           observers.clear();
+       })
+    }
 }
 
