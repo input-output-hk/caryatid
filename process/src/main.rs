@@ -20,7 +20,8 @@ async fn main() -> Result<()> {
     unsafe {
         let module_lib = Library::new("./target/debug/libsample_module.so")
             .expect("Failed to load module");
-        let module_creator: Symbol<unsafe extern "C" fn(&Context) -> *mut dyn Module> =
+        let module_creator: Symbol<unsafe extern "C" fn(&Context)
+                                                        -> *mut dyn Module> =
             module_lib.get(b"create_module")
             .expect("Failed to load create_module symbol");
 

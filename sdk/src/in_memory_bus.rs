@@ -19,7 +19,8 @@ impl<M: MessageBounds> InMemoryBus<M> {
     pub fn new(num_workers: usize) -> Self {
         let (sender, mut receiver) = mpsc::channel::<(String, Arc<M>)>(100);
 
-        let observers: Arc<Mutex<HashMap<String, Vec<Arc<BoxedObserverFn<M>>>>>> =
+        let observers: Arc<Mutex<HashMap<String,
+                                         Vec<Arc<BoxedObserverFn<M>>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
         // Create a task queue channel for each worker
@@ -48,9 +49,12 @@ impl<M: MessageBounds> InMemoryBus<M> {
                 if let Some(observer_list) = observers.get(&topic) {
                     // For each observer, dispatch the task to a worker
                     for observer in observer_list {
-                        let worker_tx = &worker_txs[round_robin_index % num_workers];
+                        let worker_tx =
+                            &worker_txs[round_robin_index % num_workers];
+
                         // Send the observer and the message to a worker
-                        if let Err(e) = worker_tx.send((observer.clone(), message.clone())).await {
+                        if let Err(e) = worker_tx.send((observer.clone(),
+                                                        message.clone())).await {
                             eprintln!("Failed to send message to worker: {}", e);
                         }
 
@@ -66,7 +70,8 @@ impl<M: MessageBounds> InMemoryBus<M> {
 
 impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
 
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
+    fn publish(&self, topic: &str, message: Arc<M>) ->
+        BoxFuture<'static, Result<()>> {
         let topic = topic.to_string();
         let sender = self.sender.clone();
         let message = message.clone();
