@@ -7,7 +7,7 @@ use anyhow::Result;
 pub struct SampleModule;
 
 impl Module for SampleModule {
-    fn init(&self, context: Arc<Context>) -> Result<()> {
+    fn init(&self, context: &Context) -> Result<()> {
         println!("SampleModule initialized!");
 
         // Register an observer on the message bus to listen for messages on "sample_topic"

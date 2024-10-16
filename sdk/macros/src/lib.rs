@@ -20,7 +20,7 @@ pub fn module(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         #[no_mangle]
-        pub extern "C" fn create_module(context: Arc<Context>) -> *mut dyn Module {
+        pub extern "C" fn create_module(context: &Context) -> *mut dyn Module {
             let module = #struct_name {};
             module.init(context).unwrap();
             Box::into_raw(Box::new(module))

@@ -14,18 +14,18 @@ async fn main() -> Result<()> {
     let message_bus = Arc::new(InMemoryBus::new(4));
 
     // Create the shared context
-    let context = Arc::new(Context::new(message_bus.clone()));
+    let context = Context::new(message_bus.clone());
 
     // Dynamically load the module
     unsafe {
         let module_lib = Library::new("./target/debug/libsample_module.so")
             .expect("Failed to load module");
-        let module_creator: Symbol<unsafe extern "C" fn(Arc<Context>) -> *mut dyn Module> =
+        let module_creator: Symbol<unsafe extern "C" fn(&Context) -> *mut dyn Module> =
             module_lib.get(b"create_module")
             .expect("Failed to load create_module symbol");
 
         // Create the module
-        module_creator(context);
+        module_creator(&context);
     }
 
     // Send a test JSON message to the message bus on 'sample_topic'
