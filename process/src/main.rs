@@ -8,6 +8,7 @@ use serde_json::json;
 use config::{Config, File, Environment};
 use env_logger;
 use log::{info, warn};
+use tokio::signal::unix::{signal, SignalKind};
 
 mod loaded_module;
 use loaded_module::LoadedModule;
@@ -90,14 +91,16 @@ async fn main() -> Result<()> {
     message_bus.publish("sample_topic", test_message)
         .await.expect("Failed to publish message");
 
-    // Wait for completion
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    // Wait for SIGTERM
+    let mut sigterm = signal(SignalKind::terminate())?;
+    sigterm.recv().await;
+
+    info!("SIGTERM received. Shutting down...");
 
     // Ensure all logging is done
     log::logger().flush();
 
     // Clear the modules to drop all the loaded libraries
-    info!("Shutting down modules");
     modules.clear();
 
     info!("Exiting");
