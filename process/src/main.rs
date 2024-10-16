@@ -57,7 +57,10 @@ async fn main() -> Result<()> {
             .expect("Failed to load create_module symbol");
 
         // Create the module
-        module_creator(&context);
+        let module = module_creator(&context).as_ref()
+            .expect("Failed to create module");
+
+        println!("Created module {}", module.get_name());
     }
 
     // Send a test JSON message to the message bus on 'sample_topic'

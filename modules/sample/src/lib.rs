@@ -6,7 +6,7 @@ use anyhow::Result;
 #[module]
 pub struct SampleModule;
 
-impl Module for SampleModule {
+impl SampleModule {
     fn init(&self, context: &Context) -> Result<()> {
         println!("SampleModule initialized!");
 

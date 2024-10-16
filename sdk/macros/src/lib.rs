@@ -13,9 +13,13 @@ pub fn module(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let expanded = quote! {
         #input
 
-        impl #struct_name {
-            pub fn new() -> Self {
-                Self { }
+        impl Module for #struct_name {
+            fn init(&self, context: &Context) -> anyhow::Result<()> {
+                Ok(())
+            }
+
+            fn get_name(&self) -> &'static str {
+                stringify!(#struct_name)
             }
         }
 
