@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
+use log::error;
 use futures::future::{BoxFuture, FutureExt};
 use crate::message_bus::{MessageBus, BoxedObserverFn, MessageBounds};
 
@@ -61,7 +62,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
                         // Send the observer and the message to a worker
                         if let Err(e) = worker_tx.send((observer.clone(),
                                                         message.clone())).await {
-                            eprintln!("Failed to send message to worker: {}", e);
+                            error!("Failed to send message to worker: {}", e);
                         }
 
                         round_robin_index += 1;

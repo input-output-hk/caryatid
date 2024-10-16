@@ -6,6 +6,8 @@ use anyhow::Result;
 use std::sync::Arc;
 use serde_json::json;
 use config::{Config, File, Environment};
+use env_logger;
+use log::{info, warn};
 
 mod loaded_module;
 use loaded_module::LoadedModule;
@@ -34,6 +36,9 @@ fn get_config(config: &Config, path: &str) -> Config {
 #[tokio::main]
 async fn main() -> Result<()> {
 
+    // Initialise logging
+    env_logger::init();
+
     // Read the config
     let config = Config::builder()
         .add_source(File::with_name("process/caryatid"))
@@ -53,7 +58,7 @@ async fn main() -> Result<()> {
     let mut modules: Vec<LoadedModule> = Vec::new();
     let modules_section = context.config.get_table("modules")?;
     for (key, _value) in modules_section.into_iter() {
-        println!("Found module '{}'", key);
+        info!("Found module '{}'", key);
 
         // Get the module's config
         let module_config = get_config(&context.config,
@@ -66,13 +71,13 @@ async fn main() -> Result<()> {
         // Load the module
         match LoadedModule::load(lib_name, &context, &module_config) {
             Ok(module) => {
-                println!("Created module {}: {}",
-                         module.module.get_name(),
-                         module.module.get_description());
+                info!("Created module {}: {}",
+                      module.module.get_name(),
+                      module.module.get_description());
                 modules.push(module)
             },
             Err(e) => {
-                println!("Can't load module {}: {}", key, e);
+                warn!("Can't load module {}: {}", key, e);
             }
         }
     }
@@ -88,6 +93,14 @@ async fn main() -> Result<()> {
     // Wait for completion
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
+    // Ensure all logging is done
+    log::logger().flush();
+
+    // Clear the modules to drop all the loaded libraries
+    info!("Shutting down modules");
+    modules.clear();
+
+    info!("Exiting");
     Ok(())
 }
 

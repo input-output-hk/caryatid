@@ -4,6 +4,7 @@ use caryatid_sdk::*;
 use anyhow::Result;
 use std::sync::Arc;
 use config::Config;
+use log::info;
 
 /// A struct to hold both the dynamically loaded module and the library it
 /// depends on.
@@ -19,7 +20,7 @@ impl LoadedModule {
         let module_path = context.config.get_string("paths.modules")
             .unwrap_or(".".to_string());
         let module_file = module_path + "/" + &lib_name;
-        println!("Loading module from {}", module_file);
+        info!("Loading module from {}", module_file);
 
         unsafe {
             let module_lib = Arc::new(Library::new(module_file)?);

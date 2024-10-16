@@ -3,6 +3,7 @@ use caryatid_sdk::*;
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
+use log::{info};
 
 #[module(
     name = "sample",
@@ -12,15 +13,15 @@ pub struct SampleModule;
 
 impl SampleModule {
     fn init(&self, context: &Context, config: &Config) -> Result<()> {
-        println!("Initialising sample module");
-        println!("Configuration 'foo' = {}",
-                 config.get_string("foo").unwrap_or("NOT FOUND".to_string()));
+        info!("Initialising sample module");
+        info!("Configuration 'foo' = {}",
+              config.get_string("foo").unwrap_or("NOT FOUND".to_string()));
 
         // Register an observer on the message bus to listen for messages
         // on "sample_topic"
         context.message_bus.register("sample_topic",
                                      |message: Arc<serde_json::Value>| {
-            println!("SampleModule received: {:?}", message);
+           info!("SampleModule received: {:?}", message);
         })?;
 
         Ok(())
