@@ -1,6 +1,6 @@
 # Caryatid process executable
 [package]
-name = "caryatid-process"
+name = "caryatid"
 version = "0.1.0"
 edition = "2021"
 authors = ["Paul Clark <paul.clark@iohk.io>"]

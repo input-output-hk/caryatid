@@ -1,4 +1,5 @@
-use caryatid_sdk::{module, context::Context, module::Module, message_bus::MessageBusExt};
+// Sample Caraytid module
+use caryatid_sdk::*;
 use std::sync::Arc;
 use anyhow::Result;
 
