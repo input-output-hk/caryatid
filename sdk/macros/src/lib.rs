@@ -64,8 +64,8 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         // Implement basic Debug for tracing
-        impl fmt::Debug for #struct_name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        impl std::fmt::Debug for #struct_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.debug_struct(#name)
                     .finish()
             }

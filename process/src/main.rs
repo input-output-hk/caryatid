@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
         "message": "Hello from the Caryatid process!",
     }));
 
-    message_bus.publish("sample_topic", test_message)
+    message_bus.publish("sample.test", test_message)
         .await.expect("Failed to publish message");
 
     // Wait for SIGTERM
