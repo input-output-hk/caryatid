@@ -1,7 +1,7 @@
-# Sample Caryatid framework module
+# Sample Caryatid framework module - subscriber side
 
 [package]
-name = "sample-module"
+name = "sample-subscriber"
 version = "0.1.0"
 edition = "2021"
 

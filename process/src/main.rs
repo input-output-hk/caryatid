@@ -99,14 +99,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Send a test JSON message to the message bus on 'sample_topic'
-    let test_message = Arc::new(json!({
-        "message": "Hello from the Caryatid process!",
-    }));
-
-    message_bus.publish("sample.test", test_message)
-        .await.expect("Failed to publish message");
-
     // Wait for SIGTERM
     let mut sigterm = signal(SignalKind::terminate())?;
     sigterm.recv().await;

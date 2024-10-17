@@ -4,7 +4,8 @@
 members = [
     "process",         # Executable for a single process
     "sdk",             # The SDK library for modules
-    "modules/sample",  # An example module
+    "modules/sample-subscriber",  # An example subscriber module
+    "modules/sample-publisher",   # An example subscriber module
 ]
 
 resolver = "2"

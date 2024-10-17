@@ -3,9 +3,13 @@
 [paths]
 modules = "./target/debug"
 
-[modules.sample]
-lib = "libsample_module.so"
-foo = "bar"
+[modules.sample-subscriber]
+lib = "libsample_subscriber.so"
+topic = "sample.test"
+
+[modules.sample-publisher]
+lib = "libsample_publisher.so"
+topic = "sample.test"
 
 #[message-bus.rabbit-mq]
 
