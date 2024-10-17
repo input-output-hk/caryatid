@@ -4,7 +4,7 @@ use caryatid_sdk::*;
 use anyhow::Result;
 use std::sync::Arc;
 use config::Config;
-use log::info;
+use tracing::info;
 
 /// A struct to hold both the dynamically loaded module and the library it
 /// depends on.

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
-use log::error;
+use tracing::error;
 use futures::future::{BoxFuture, FutureExt};
 use crate::message_bus::{MessageBus, BoxedObserverFn, MessageBounds};
 

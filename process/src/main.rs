@@ -6,10 +6,9 @@ use anyhow::Result;
 use std::sync::Arc;
 use serde_json::json;
 use config::{Config, File, Environment};
-use env_logger;
-use log::{info, warn};
 use tokio::signal::unix::{signal, SignalKind};
-
+use tracing::{info, warn};
+use tracing_subscriber;
 mod loaded_module;
 use loaded_module::LoadedModule;
 
@@ -37,8 +36,8 @@ fn get_config(config: &Config, path: &str) -> Config {
 #[tokio::main]
 async fn main() -> Result<()> {
 
-    // Initialise logging
-    env_logger::init();
+    // Initialise tracing
+    tracing_subscriber::fmt::init();
 
     // Read the config
     let config = Config::builder()
@@ -96,9 +95,6 @@ async fn main() -> Result<()> {
     sigterm.recv().await;
 
     info!("SIGTERM received. Shutting down...");
-
-    // Ensure all logging is done
-    log::logger().flush();
 
     // Shutdown the message bus and all subscriptions (before losing modules)
     message_bus.shutdown();

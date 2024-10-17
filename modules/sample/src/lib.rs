@@ -3,7 +3,8 @@ use caryatid_sdk::*;
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
-use log::{info};
+use tracing::{info};
+use std::fmt;
 
 #[module(
     name = "sample",
@@ -12,6 +13,7 @@ use log::{info};
 pub struct SampleModule;
 
 impl SampleModule {
+    #[tracing::instrument]
     fn init(&self, context: &Context, config: &Config) -> Result<()> {
         info!("Initialising sample module");
         info!("Configuration 'foo' = {}",

@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use config::Config;
 use crate::message_bus::MessageBus;
+use std::fmt;
 
 pub struct Context {
     pub config: Arc<Config>,
@@ -18,3 +19,10 @@ impl Context {
     }
 }
 
+/// Minimal implementation of Debug for tracing
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Context")
+            .finish()
+    }
+}

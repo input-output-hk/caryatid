@@ -59,6 +59,14 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             module.init(context, config).unwrap();
             Box::into_raw(Box::new(module))
         }
+
+        // Implement basic Debug for tracing
+        impl fmt::Debug for #struct_name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct(#name)
+                    .finish()
+            }
+        }
     };
 
     TokenStream::from(expanded)
