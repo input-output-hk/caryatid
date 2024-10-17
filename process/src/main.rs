@@ -16,6 +16,9 @@ use loaded_module::LoadedModule;
 mod in_memory_bus;
 use in_memory_bus::InMemoryBus;
 
+mod rabbit_mq_bus;
+use rabbit_mq_bus::RabbitMQBus;
+
 /// Extract a sub-config as a new Config object
 /// Defaults to an empty Config if the path does not exist.
 fn get_config(config: &Config, path: &str) -> Config {
@@ -50,9 +53,19 @@ async fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    // Create an in-memory message bus
-    let message_bus = Arc::new(InMemoryBus::new(
-        &get_config(&config, "message_bus.in_memory")));
+    // Create a message bus according to config
+    let message_bus: Arc<dyn MessageBus<serde_json::Value>>;
+    if let Ok(_table) = config.get_table("message-bus.rabbit-mq") {
+        message_bus = Arc::new(
+            RabbitMQBus::new(&get_config(&config, "message-bus.rabbit-mq"))
+                .await
+                .expect("Can't create RabbitMQ bus")
+                );
+    }
+    else {
+        message_bus = Arc::new(InMemoryBus::new(
+            &get_config(&config, "message-bus.in-memory")));
+    }
 
     // Create the shared context
     let context = Context::new(Arc::new(config),

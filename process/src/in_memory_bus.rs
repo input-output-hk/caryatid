@@ -7,6 +7,7 @@ use config::Config;
 use tracing::error;
 use futures::future::{BoxFuture, FutureExt};
 use crate::message_bus::{MessageBus, BoxedObserverFn, MessageBounds};
+use tracing::info;
 
 const DEFAULT_WORKERS: i64 = 4;
 
@@ -25,6 +26,8 @@ impl<M: MessageBounds> InMemoryBus<M> {
             .unwrap_or(DEFAULT_WORKERS) as usize;
 
         let (sender, mut receiver) = mpsc::channel::<(String, Arc<M>)>(100);
+
+        info!("Creating in-memory message bus with {} workers", num_workers);
 
         let observers: Arc<Mutex<HashMap<String,
                                          Vec<Arc<BoxedObserverFn<M>>>>>> =

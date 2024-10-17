@@ -7,6 +7,8 @@ modules = "./target/debug"
 lib = "libsample_module.so"
 foo = "bar"
 
+#[message-bus.rabbit-mq]
+
 [message-bus.in-memory]
-workers = 4
+workers = 10
 
