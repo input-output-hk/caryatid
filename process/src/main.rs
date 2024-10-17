@@ -114,7 +114,7 @@ async fn main() -> Result<()> {
     info!("SIGTERM received. Shutting down...");
 
     // Shutdown the message bus and all subscriptions (before losing modules)
-    message_bus.shutdown();
+    message_bus.shutdown().await?;
 
     // Clear the modules to drop all the loaded libraries
     modules.clear();

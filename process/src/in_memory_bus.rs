@@ -5,7 +5,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use tracing::error;
-use futures::future::{BoxFuture, FutureExt};
+use futures::future::BoxFuture;
 use crate::message_bus::{MessageBus, BoxedObserverFn, MessageBounds};
 use tracing::info;
 
@@ -80,19 +80,20 @@ impl<M: MessageBounds> InMemoryBus<M> {
 
 impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
 
+    /// Publish a message on a given topic
     fn publish(&self, topic: &str, message: Arc<M>) ->
         BoxFuture<'static, Result<()>> {
         let topic = topic.to_string();
         let sender = self.sender.clone();
         let message = message.clone();
 
-        async move {
+        Box::pin(async move {
             sender.send((topic, message)).await?;
             Ok(())
-        }
-        .boxed()
+        })
     }
 
+    // Subscribe for a message with an observer function
     fn register_observer(&self, topic: &str, observer: BoxedObserverFn<M>)
                          -> Result<()> {
         tokio::task::block_in_place(|| {
@@ -104,12 +105,15 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
         })
     }
 
-    // Shut down
-    fn shutdown(&self) {
-       tokio::task::block_in_place(|| {
-           let mut observers = self.observers.blocking_lock();
-           observers.clear();
-       })
+    /// Shut down, clearing all observers
+    fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
+        let observers = self.observers.clone();
+
+        Box::pin(async move {
+            let mut observers = observers.lock().await;
+            observers.clear();
+            Ok(())
+        })
     }
 }
 

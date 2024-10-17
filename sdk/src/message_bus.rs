@@ -25,7 +25,7 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
                          -> Result<()>;
 
     // Shut down
-    fn shutdown(&self);
+    fn shutdown(&self) -> BoxFuture<'static, anyhow::Result<()>>;
 }
 
 // Extension trait to sugar registration - needed because MessageBus must be

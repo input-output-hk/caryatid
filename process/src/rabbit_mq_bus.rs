@@ -16,8 +16,9 @@ use tracing::info;
 
 /// RabbitMQ message bus implementation
 pub struct RabbitMQBus<M: MessageBounds> {
-    channel: Arc<Mutex<Channel>>,  // RabbitMQ channel
-   _phantom: PhantomData<M>,       // Required to associate with <M> (eww)
+    connection: Arc<Mutex<Connection>>,  // RabbitMQ connection
+    channel: Arc<Mutex<Channel>>,        // RabbitMQ outgoing channel
+    _phantom: PhantomData<M>,      // Required to associate with <M> (eww)
 }
 
 impl<M: MessageBounds> RabbitMQBus<M> {
@@ -30,16 +31,18 @@ impl<M: MessageBounds> RabbitMQBus<M> {
 
         info!("Connecting to RabbitMQ at {}", addr);
 
-        let conn = Connection::connect(&addr, ConnectionProperties::default())
+        let connection =
+            Connection::connect(&addr, ConnectionProperties::default())
             .await
             .expect("Failed to connect to RabbitMQ");
 
         info!("RabbitMQ connected");
 
-        // Create a channel
-        let channel = conn.create_channel().await?;
+        // Create a channel for outgoing messages
+        let channel = connection.create_channel().await?;
 
         Ok(Self {
+            connection: Arc::new(Mutex::new(connection)),
             channel: Arc::new(Mutex::new(channel)),
             _phantom: PhantomData
         })
@@ -91,12 +94,18 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
         topic: &str,
         observer: BoxedObserverFn<M>,
     ) -> Result<()> {
-        let channel = self.channel.clone();
+        let connection = self.connection.clone();  // Clone the connection
         let observer = Arc::new(observer); // Shared observer function
         let topic = topic.to_string();
 
         tokio::spawn(async move {
-            let channel = channel.lock().await;
+
+            // Create a new channel for this observer
+            let channel = connection.lock()
+                .await
+                .create_channel()
+                .await
+                .expect("Failed to create channel");
 
             // Declare the queue
             channel
@@ -136,7 +145,16 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
         Ok(())
     }
 
-    fn shutdown(&self) {
-        // Optionally, handle the shutdown logic for RabbitMQ if needed
+    /// Shut down the bus connection
+    fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
+        info!("Shutting down RabbitMQ interface");
+        let connection = self.connection.clone();
+
+        Box::pin(async move {
+            // Close the connection
+            let connection = connection.lock().await;
+            connection.close(200, "Goodbye").await?;
+            Ok(())
+        })
     }
 }
