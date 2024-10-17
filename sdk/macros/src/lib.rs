@@ -55,6 +55,9 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[no_mangle]
         pub extern "C" fn create_module(context: &Context, config: &Config)
                                         -> *mut dyn Module {
+            // Initialise own own tracing
+            tracing_subscriber::fmt::init();
+
             let module = #struct_name {};
             module.init(context, config).unwrap();
             Box::into_raw(Box::new(module))

@@ -13,7 +13,6 @@ use std::fmt;
 pub struct SampleModule;
 
 impl SampleModule {
-    #[tracing::instrument]
     fn init(&self, context: &Context, config: &Config) -> Result<()> {
         info!("Initialising sample module");
         info!("Configuration 'foo' = {}",
