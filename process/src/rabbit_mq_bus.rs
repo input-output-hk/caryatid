@@ -10,7 +10,7 @@ use config::Config;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use futures::future::BoxFuture;
-use crate::message_bus::{MessageBus, BoxedObserverFn, MessageBounds};
+use crate::message_bus::{MessageBus, BoxedSubscriber, MessageBounds};
 use std::marker::PhantomData;
 use tracing::info;
 
@@ -89,18 +89,18 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
     }
 
     // Subscribe to a topic
-    fn register_observer(
+    fn register_subscriber(
         &self,
         topic: &str,
-        observer: BoxedObserverFn<M>,
+        subscriber: BoxedSubscriber<M>,
     ) -> Result<()> {
         let connection = self.connection.clone();  // Clone the connection
-        let observer = Arc::new(observer); // Shared observer function
+        let subscriber = Arc::new(subscriber); // Shared subscriber function
         let topic = topic.to_string();
 
         tokio::spawn(async move {
 
-            // Create a new channel for this observer
+            // Create a new channel for this subscriber
             let channel = connection.lock()
                 .await
                 .create_channel()
@@ -131,8 +131,8 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                 let message: M = serde_json::from_slice(&delivery.data)
                     .expect("Invalid message format");
 
-                // Call the observer function with the message
-                observer(Arc::new(message)).await;
+                // Call the subscriber function with the message
+                subscriber(Arc::new(message)).await;
 
                 // Acknowledge the message
                 delivery

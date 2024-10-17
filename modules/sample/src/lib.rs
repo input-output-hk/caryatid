@@ -26,10 +26,10 @@ impl SampleModule {
         info!("Configuration 'foo' = {}",
               config.get_string("foo").unwrap_or("NOT FOUND".to_string()));
 
-        // Register an observer on the message bus to listen for messages
+        // Register a subscriber on the message bus to listen for messages
         // on "sample.test". Messages are passed as JSON objects, in an Arc
-        context.message_bus.register("sample.test",
-                                     |message: Arc<serde_json::Value>| {
+        context.message_bus.subscribe("sample.test",
+                                      |message: Arc<serde_json::Value>| {
            info!("SampleModule received: {:?}", message);
         })?;
 

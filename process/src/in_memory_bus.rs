@@ -6,15 +6,15 @@ use anyhow::Result;
 use config::Config;
 use tracing::error;
 use futures::future::BoxFuture;
-use crate::message_bus::{MessageBus, BoxedObserverFn, MessageBounds};
+use crate::message_bus::{MessageBus, BoxedSubscriber, MessageBounds};
 use tracing::info;
 
 const DEFAULT_WORKERS: i64 = 4;
 
 pub struct InMemoryBus<M: MessageBounds> {
 
-    // Map of observer functions by topic
-    observers: Arc<Mutex<HashMap<String, Vec<Arc<BoxedObserverFn<M>>>>>>,
+    // Map of subscriber functions by topic
+    subscribers: Arc<Mutex<HashMap<String, Vec<Arc<BoxedSubscriber<M>>>>>>,
 
     // Sender for received messages
     sender: mpsc::Sender<(String, Arc<M>)>,
@@ -29,41 +29,41 @@ impl<M: MessageBounds> InMemoryBus<M> {
 
         info!("Creating in-memory message bus with {} workers", num_workers);
 
-        let observers: Arc<Mutex<HashMap<String,
-                                         Vec<Arc<BoxedObserverFn<M>>>>>> =
+        let subscribers: Arc<Mutex<HashMap<String,
+                                         Vec<Arc<BoxedSubscriber<M>>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
         // Create a task queue channel for each worker
         let mut worker_txs = Vec::new();
         for _ in 0..num_workers {
             let (worker_tx, mut worker_rx) =
-                mpsc::channel::<(Arc<BoxedObserverFn<M>>, Arc<M>)>(100);
+                mpsc::channel::<(Arc<BoxedSubscriber<M>>, Arc<M>)>(100);
             worker_txs.push(worker_tx);
 
-            // Spawn worker tasks that handle individual observer invocations
+            // Spawn worker tasks that handle individual subscriber invocations
             tokio::spawn(async move {
-                while let Some((observer, message)) = worker_rx.recv().await {
-                    observer(message).await;
+                while let Some((subscriber, message)) = worker_rx.recv().await {
+                    subscriber(message).await;
                 }
             });
         }
 
         // Single receiver task to handle incoming messages
-        let obs_clone = observers.clone(); // Clone the Arc for the receiver task
+        let subs_clone = subscribers.clone();
         tokio::spawn(async move {
             let mut round_robin_index = 0;
 
             while let Some((topic, message)) = receiver.recv().await {
-                // Lock the observers for the topic
-                let observers = obs_clone.lock().await;
-                if let Some(observer_list) = observers.get(&topic) {
-                    // For each observer, dispatch the task to a worker
-                    for observer in observer_list {
+                // Lock the subscribers for the topic
+                let subscribers = subs_clone.lock().await;
+                if let Some(subscriber_list) = subscribers.get(&topic) {
+                    // For each subscriber, dispatch the task to a worker
+                    for subscriber in subscriber_list {
                         let worker_tx =
                             &worker_txs[round_robin_index % num_workers];
 
-                        // Send the observer and the message to a worker
-                        if let Err(e) = worker_tx.send((observer.clone(),
+                        // Send the subscriber and the message to a worker
+                        if let Err(e) = worker_tx.send((subscriber.clone(),
                                                         message.clone())).await {
                             error!("Failed to send message to worker: {}", e);
                         }
@@ -74,7 +74,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
             }
         });
 
-        InMemoryBus { observers, sender }
+        InMemoryBus { subscribers, sender }
     }
 }
 
@@ -93,25 +93,25 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
         })
     }
 
-    // Subscribe for a message with an observer function
-    fn register_observer(&self, topic: &str, observer: BoxedObserverFn<M>)
+    // Subscribe for a message with an subscriber function
+    fn register_subscriber(&self, topic: &str, subscriber: BoxedSubscriber<M>)
                          -> Result<()> {
         tokio::task::block_in_place(|| {
-            let mut observers = self.observers.blocking_lock();
-            observers.entry(topic.to_string())
+            let mut subscribers = self.subscribers.blocking_lock();
+            subscribers.entry(topic.to_string())
                 .or_insert(Vec::new())
-                .push(Arc::new(observer));
+                .push(Arc::new(subscriber));
             Ok(())
         })
     }
 
-    /// Shut down, clearing all observers
+    /// Shut down, clearing all subscribers
     fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
-        let observers = self.observers.clone();
+        let subscribers = self.subscribers.clone();
 
         Box::pin(async move {
-            let mut observers = observers.lock().await;
-            observers.clear();
+            let mut subscribers = subscribers.lock().await;
+            subscribers.clear();
             Ok(())
         })
     }
