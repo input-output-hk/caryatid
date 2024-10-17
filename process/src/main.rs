@@ -9,8 +9,12 @@ use config::{Config, File, Environment};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{info, warn};
 use tracing_subscriber;
+
 mod loaded_module;
 use loaded_module::LoadedModule;
+
+mod in_memory_bus;
+use in_memory_bus::InMemoryBus;
 
 /// Extract a sub-config as a new Config object
 /// Defaults to an empty Config if the path does not exist.
