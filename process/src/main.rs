@@ -4,7 +4,6 @@
 use caryatid_sdk::*;
 use anyhow::Result;
 use std::sync::Arc;
-use serde_json::json;
 use config::{Config, File, Environment};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{info, warn};
@@ -69,7 +68,8 @@ async fn main() -> Result<()> {
 
     // Create the shared context
     let context = Context::new(Arc::new(config),
-                               message_bus.clone());
+                               message_bus.clone(),
+                               tokio::runtime::Handle::current());
 
     // Scan for modules
     let mut modules: Vec<LoadedModule> = Vec::new();

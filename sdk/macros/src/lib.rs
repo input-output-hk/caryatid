@@ -58,6 +58,10 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             // Initialise own own tracing
             tracing_subscriber::fmt::init();
 
+            // Use the process's Tokio runtime for the duration of init()
+            // so it applies for its task spawns
+            let _guard = context.tokio_runtime.enter();
+
             let module = #struct_name {};
             module.init(context, config).unwrap();
             Box::into_raw(Box::new(module))

@@ -8,14 +8,16 @@ use std::fmt;
 pub struct Context {
     pub config: Arc<Config>,
     pub message_bus: Arc<dyn MessageBus<serde_json::Value>>,
+    pub tokio_runtime: tokio::runtime::Handle,
 }
 
 impl Context {
     pub fn new(
         config: Arc<Config>,
         message_bus: Arc<dyn MessageBus<serde_json::Value>>,
+        tokio_runtime: tokio::runtime::Handle,
     ) -> Self {
-        Self { config, message_bus }
+        Self { config, message_bus, tokio_runtime }
     }
 }
 
