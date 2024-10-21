@@ -27,7 +27,7 @@ impl SamplePublisher {
 
         // Send a test JSON message to the message bus on 'sample_topic'
         // Let this run async
-        tokio::task::spawn(async move {
+        context.runtime.spawn(async move {
 
             let test_message = Arc::new(json!({
                 "message": "Hello, world!",

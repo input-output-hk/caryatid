@@ -6,6 +6,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use config::{Config, File, Environment};
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::runtime::Runtime;
 use tracing::{info, warn};
 use tracing_subscriber;
 
@@ -38,10 +39,8 @@ fn get_config(config: &Config, path: &str) -> Config {
     }
 }
 
-/// Main process
-#[tokio::main]
-async fn main() -> Result<()> {
-
+/// Async main, with tokio runtime
+async fn async_main(runtime: Arc<Runtime>) {
     // Initialise tracing
     tracing_subscriber::fmt::init();
 
@@ -59,7 +58,7 @@ async fn main() -> Result<()> {
             RabbitMQBus::new(&get_config(&config, "message-bus.rabbit-mq"))
                 .await
                 .expect("Can't create RabbitMQ bus")
-                );
+        );
     }
     else {
         message_bus = Arc::new(InMemoryBus::new(
@@ -67,52 +66,75 @@ async fn main() -> Result<()> {
     }
 
     // Create the shared context
-    let context = Context::new(Arc::new(config),
-                               message_bus.clone(),
-                               tokio::runtime::Handle::current());
+    let context = Context::new(Arc::new(config), message_bus.clone(), runtime);
 
     // Scan for modules
     let mut modules: Vec<LoadedModule> = Vec::new();
-    let modules_section = context.config.get_table("modules")?;
-    for (key, _value) in modules_section.into_iter() {
-        info!("Found module '{}'", key);
+    if let Ok(modules_section) = context.config.get_table("modules") {
+        for (key, _value) in modules_section.into_iter() {
+            info!("Found module '{}'", key);
 
-        // Get the module's config
-        let module_config = get_config(&context.config,
-                                       format!("modules.{}", key).as_str());
+            // Get the module's config
+            let module_config = get_config(&context.config,
+                                           format!("modules.{}", key).as_str());
 
-        // Use their specified name, or default it
-        let lib_name = module_config.get_string("lib")
-            .unwrap_or(format!("lib{}_module.so", key));
+            // Use their specified name, or default it
+            let lib_name = module_config.get_string("lib")
+                .unwrap_or(format!("lib{}_module.so", key));
 
-        // Load the module
-        match LoadedModule::load(lib_name, &context, &module_config) {
-            Ok(module) => {
-                info!("Created module {}: {}",
-                      module.module.get_name(),
-                      module.module.get_description());
-                modules.push(module)
-            },
-            Err(e) => {
-                warn!("Can't load module {}: {}", key, e);
+            // Load the module
+            match LoadedModule::load(lib_name, &context, &module_config) {
+                Ok(module) => {
+                    info!("Created module {}: {}",
+                          module.module.get_name(),
+                          module.module.get_description());
+                    modules.push(module)
+                },
+                Err(e) => {
+                    warn!("Can't load module {}: {}", key, e);
+                }
             }
         }
     }
 
+    info!("Running");
+
+    // !!! runtime spawn test
+    context.runtime.spawn(async move {
+        println!("In async block");
+    });
+
     // Wait for SIGTERM
-    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigterm = signal(SignalKind::terminate())
+        .expect("Can't set signal");
     sigterm.recv().await;
 
     info!("SIGTERM received. Shutting down...");
 
     // Shutdown the message bus and all subscriptions (before losing modules)
-    message_bus.shutdown().await?;
+    let _ = message_bus.shutdown().await;
 
     // Clear the modules to drop all the loaded libraries
     modules.clear();
 
     // Bye!
     info!("Exiting");
+}
+
+/// Main process
+fn main() -> Result<()> {
+    // Create a shared runtime
+    let runtime = Arc::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap());
+
+    // Switch to async
+    runtime.block_on(async {
+            async_main(runtime.clone()).await;
+    });
+
     Ok(())
 }
 
