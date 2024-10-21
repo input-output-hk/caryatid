@@ -53,8 +53,8 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         #[no_mangle]
-        pub extern "C" fn create_module(context: &Context, config: &Config)
-                                        -> *mut dyn Module {
+        pub fn create_module(context: &Context, config: &Config)
+                             -> Arc<dyn Module> {
             // Initialise own own tracing
             tracing_subscriber::fmt::init();
 
@@ -64,7 +64,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let module = #struct_name {};
             module.init(context, config).unwrap();
-            Box::into_raw(Box::new(module))
+            Arc::new(module)
         }
 
         // Implement basic Debug for tracing

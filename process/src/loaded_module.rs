@@ -9,7 +9,7 @@ use tracing::info;
 /// A struct to hold both the dynamically loaded module and the library it
 /// depends on.
 pub struct LoadedModule {
-    pub module: Box<dyn Module>,
+    pub module: Arc<dyn Module>,
     _lib: Arc<Library>,             // Hold the library to keep it in memory
 }
 
@@ -22,20 +22,21 @@ impl LoadedModule {
         let module_file = module_path + "/" + &lib_name;
         info!("Loading module from {}", module_file);
 
+        // Load the library and get the create_module symbol
+        let module_lib: Arc<Library>;
+        let module_creator: Symbol<fn(&Context, &Config) -> Arc<dyn Module>>;
         unsafe {
-            let module_lib = Arc::new(Library::new(module_file)?);
-            let module_creator: Symbol<unsafe extern "C" fn(&Context, &Config)
-                                                            -> *mut dyn Module> =
-                module_lib.get(b"create_module")?;
-
-            // Create the module
-            let module = Box::from_raw(module_creator(&context, &config));
-
-            Ok(Self {
-                module,
-                _lib: module_lib, // Store the library to keep it in scope
-            })
+            module_lib = Arc::new(Library::new(module_file)?);
+            module_creator = module_lib.get(b"create_module")?;
         }
+
+        // Create the module
+        let module = module_creator(&context, &config);
+
+        Ok(Self {
+            module,
+            _lib: module_lib, // Store the library to keep it in scope
+        })
     }
 }
 
