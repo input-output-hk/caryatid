@@ -96,13 +96,16 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
     // Subscribe for a message with an subscriber function
     fn register_subscriber(&self, topic: &str, subscriber: BoxedSubscriber<M>)
                          -> Result<()> {
-        tokio::task::block_in_place(|| {
-            let mut subscribers = self.subscribers.blocking_lock();
-            subscribers.entry(topic.to_string())
+        let subscribers = self.subscribers.clone();
+        let topic = topic.to_string();
+        tokio::spawn(async move {
+            let mut subscribers = subscribers.lock().await;
+            subscribers.entry(topic)
                 .or_insert(Vec::new())
                 .push(Arc::new(subscriber));
-            Ok(())
-        })
+        });
+
+        Ok(())
     }
 
     /// Shut down, clearing all subscribers

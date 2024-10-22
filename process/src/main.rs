@@ -41,8 +41,6 @@ fn get_config(config: &Config, path: &str) -> Config {
 
 /// Async main, with tokio runtime
 async fn async_main(runtime: Arc<Runtime>) {
-    // Initialise tracing
-    tracing_subscriber::fmt::init();
 
     // Read the config
     let config = Config::builder()
@@ -99,11 +97,6 @@ async fn async_main(runtime: Arc<Runtime>) {
 
     info!("Running");
 
-    // !!! runtime spawn test
-    context.runtime.spawn(async move {
-        println!("In async block");
-    });
-
     // Wait for SIGTERM
     let mut sigterm = signal(SignalKind::terminate())
         .expect("Can't set signal");
@@ -123,12 +116,26 @@ async fn async_main(runtime: Arc<Runtime>) {
 
 /// Main process
 fn main() -> Result<()> {
-    // Create a shared runtime
-    let runtime = Arc::new(
-        tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap());
+
+    // Initialise tracing
+    tracing_subscriber::fmt::init();
+
+    info!("Caryatid modular framework");
+
+    let runtime: Arc<Runtime>;
+    if std::env::var("RUNTIME").as_deref() == Ok("multi") {
+        info!("Running in multi-threaded mode");
+        runtime = Arc::new(tokio::runtime::Builder::new_multi_thread()
+                           .enable_all()
+                           .build()
+                           .unwrap());
+    } else {
+        info!("Running in single-threaded mode");
+        runtime = Arc::new(tokio::runtime::Builder::new_current_thread()
+                           .enable_all()
+                           .build()
+                           .unwrap());
+    }
 
     // Switch to async
     runtime.block_on(async {
