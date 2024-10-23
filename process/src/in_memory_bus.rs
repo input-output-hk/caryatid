@@ -6,7 +6,7 @@ use anyhow::Result;
 use config::Config;
 use tracing::error;
 use futures::future::BoxFuture;
-use crate::message_bus::{MessageBus, BoxedSubscriber, MessageBounds};
+use caryatid_sdk::message_bus::{MessageBus, BoxedSubscriber, MessageBounds};
 use tracing::info;
 
 const DEFAULT_WORKERS: i64 = 4;

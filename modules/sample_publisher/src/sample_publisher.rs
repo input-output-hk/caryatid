@@ -1,5 +1,5 @@
 //! Sample Caraytid module - publisher side
-use caryatid_sdk::*;
+use caryatid_sdk::{Context, Module, module};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
@@ -23,7 +23,7 @@ impl SamplePublisher {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
-        info!("Initialising sample publisher on '{}'", topic);
+        info!("Creating sample publisher on '{}'", topic);
 
         // Send a test JSON message to the message bus on 'sample_topic'
         // Let this run async

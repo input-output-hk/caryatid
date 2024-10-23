@@ -1,7 +1,8 @@
 //! Main process for a Caryatid framework installation
 //! Loads and runs modules built with caryatid-sdk
 
-use caryatid_sdk::*;
+use caryatid_sdk::{Context, MessageBus};
+use caryatid_sdk::config::get_sub_config;
 use anyhow::Result;
 use std::sync::Arc;
 use config::Config;
@@ -20,26 +21,6 @@ pub struct Process {
     context: Arc<Context>,
 }
 
-/// Extract a sub-config as a new Config object
-/// Defaults to an empty Config if the path does not exist.
-fn get_config(config: &Config, path: &str) -> Config {
-    // Try to extract the sub-config as a table
-    match config.get_table(path) {
-        Ok(sub_table) => {
-            // Use ConfigBuilder to create a new Config with the sub-table
-            let mut builder = Config::builder();
-            for (key, value) in sub_table.into_iter() {
-                builder = builder.set_override(key, value).unwrap();
-            }
-            builder.build().unwrap_or_default()
-        },
-        Err(_) => {
-            // Return an empty Config if the path doesn't exist
-            Config::default()
-        }
-    }
-}
-
 impl Process {
 
     /// Create a process with the given config
@@ -49,14 +30,15 @@ impl Process {
         let message_bus: Arc<dyn MessageBus<serde_json::Value>>;
         if let Ok(_table) = config.get_table("message-bus.rabbit-mq") {
             message_bus = Arc::new(
-                RabbitMQBus::new(&get_config(&config, "message-bus.rabbit-mq"))
+                RabbitMQBus::new(&get_sub_config(&config,
+                                                 "message-bus.rabbit-mq"))
                     .await
                     .expect("Can't create RabbitMQ bus")
             );
         }
         else {
             message_bus = Arc::new(InMemoryBus::new(
-                &get_config(&config, "message-bus.in-memory")));
+                &get_sub_config(&config, "message-bus.in-memory")));
         }
 
         // Create the shared context

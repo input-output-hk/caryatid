@@ -2,6 +2,7 @@
 
 use crate::module::Module;
 use crate::context::Context;
+use crate::config::get_sub_config;
 use config::Config;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -18,8 +19,9 @@ pub fn register_module(module: Arc<dyn Module>) {
 pub fn initialise_modules(context: Arc<Context>, config: Arc<Config>) {
     info!("Initialising modules");
     for module in MODULE_REGISTRY.lock().unwrap().iter() {
-        info!("Initialising {}", module.get_name());
-        // !!! Get sub-config for modules
+        let name = module.get_name();
+        info!("Initialising {}", name);
+        let config = Arc::new(get_sub_config(&config, name));
         module.init(context.clone(), config.clone()).unwrap();
     }
 }

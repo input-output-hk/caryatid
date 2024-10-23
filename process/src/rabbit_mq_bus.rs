@@ -10,7 +10,7 @@ use config::Config;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use futures::future::BoxFuture;
-use crate::message_bus::{MessageBus, BoxedSubscriber, MessageBounds};
+use caryatid_sdk::message_bus::{MessageBus, BoxedSubscriber, MessageBounds};
 use std::marker::PhantomData;
 use tracing::info;
 
