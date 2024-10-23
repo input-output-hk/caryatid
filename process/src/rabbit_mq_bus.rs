@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 use futures::future::BoxFuture;
 use caryatid_sdk::message_bus::{MessageBus, BoxedSubscriber, MessageBounds};
 use std::marker::PhantomData;
-use tracing::info;
+use tracing::{info, error};
 
 /// RabbitMQ message bus implementation
 pub struct RabbitMQBus<M: MessageBounds> {
@@ -70,7 +70,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                 .await?;
 
             // Serialise the message
-            let payload = serde_json::to_vec(&*message)?;
+            let payload = serde_cbor::ser::to_vec(&*message)?;
 
             // Publish the message to the queue
             channel
@@ -128,13 +128,16 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
             // Process each message received
             while let Some(delivery) = consumer.next().await {
                 let delivery = delivery.expect("Error in consumer");
-                let message: M = serde_json::from_slice(&delivery.data)
-                    .expect("Invalid message format");
+                match serde_cbor::de::from_slice::<M>(&delivery.data) {
+                    Ok(message) => {
+                        // Call the subscriber function with the message
+                        subscriber(Arc::new(message)).await;
+                    },
+                    Err(e) => error!("Invalid CBOR message received: {}", e)
+                }
 
-                // Call the subscriber function with the message
-                subscriber(Arc::new(message)).await;
-
-                // Acknowledge the message
+                // Acknowledge the message anyway, otherwise it stays around
+                // forever
                 delivery
                     .ack(lapin::options::BasicAckOptions::default())
                     .await
