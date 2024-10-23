@@ -2,6 +2,7 @@
 pub mod message_bus;
 pub mod context;
 pub mod module;
+pub mod module_registry;
 
 // Flattened re-exports
 pub use caryatid_macros::module;

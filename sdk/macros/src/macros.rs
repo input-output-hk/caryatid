@@ -38,29 +38,28 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input
 
         impl Module for #struct_name {
-            fn init(&self, context: &Context, config: &Config)
+
+            // Implement init, calling down to struct's own
+            fn init(&self, context: Arc<Context>, config: Arc<Config>)
                     -> anyhow::Result<()> {
-                Ok(())
+                #struct_name::init(self, context, config)
             }
 
+            // Get name using macro's attribute
             fn get_name(&self) -> &'static str {
                 #name
             }
 
+            // Get description using macro's attribute
             fn get_description(&self) -> &'static str {
                 #description
             }
         }
 
-        #[no_mangle]
-        pub fn create_module(context: &Context, config: &Config)
-                             -> Arc<dyn Module> {
-            // Initialise own own tracing
-            tracing_subscriber::fmt::init();
-
-            let module = #struct_name {};
-            module.init(context, config).unwrap();
-            Arc::new(module)
+        // Register at startup (call this in main())
+        pub fn register() {
+            let module = Arc::new(#struct_name {});
+            caryatid_sdk::module_registry::register_module(module);
         }
 
         // Implement basic Debug for tracing

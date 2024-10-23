@@ -18,7 +18,7 @@ impl SamplePublisher {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
-    fn init(&self, context: &Context, config: &Config) -> Result<()> {
+    fn init(&self, context: Arc<Context>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
 
         // Get configuration

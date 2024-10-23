@@ -8,6 +8,9 @@ use tracing::info;
 use tracing_subscriber;
 use std::sync::Arc;
 
+extern crate sample_publisher;
+extern crate sample_subscriber;
+
 /// Standard main
 #[tokio::main]
 pub async fn main() -> Result<()> {
@@ -26,6 +29,10 @@ pub async fn main() -> Result<()> {
 
     // Create the process
     let process = Process::create(config).await;
+
+    // Register modules
+    sample_publisher::register();
+    sample_subscriber::register();
 
     // Run it
     process.run().await?;

@@ -71,6 +71,10 @@ impl Process {
 
         info!("Running");
 
+        // Create all the modules
+        caryatid_sdk::module_registry::initialise_modules(self.context.clone(),
+                                                          self.config.clone());
+
         // Wait for SIGTERM
         let mut sigterm = signal(SignalKind::terminate())
             .expect("Can't set signal");

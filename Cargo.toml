@@ -4,8 +4,8 @@
 members = [
     "main",            # Standard 'main' provider
     "sdk",             # The SDK library for modules
-    "modules/sample-subscriber",  # An example subscriber module
-    "modules/sample-publisher",   # An example subscriber module
+    "modules/sample_subscriber",  # An example subscriber module
+    "modules/sample_publisher",   # An example subscriber module
 ]
 
 resolver = "2"
