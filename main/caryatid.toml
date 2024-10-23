@@ -1,9 +1,11 @@
 # Top-level configuration for Caryatid process
 
 [sample-subscriber]
+enabled = true
 topic = "sample.test"
 
 [sample-publisher]
+enabled = true
 topic = "sample.test"
 
 #[message-bus.rabbit-mq]

@@ -6,7 +6,7 @@ use crate::config::get_sub_config;
 use config::Config;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Static list of modules
 static MODULE_REGISTRY: Mutex<Vec<Arc<dyn Module>>>
@@ -20,8 +20,15 @@ pub fn initialise_modules(context: Arc<Context>, config: Arc<Config>) {
     info!("Initialising modules");
     for module in MODULE_REGISTRY.lock().unwrap().iter() {
         let name = module.get_name();
-        info!("Initialising {}", name);
         let config = Arc::new(get_sub_config(&config, name));
-        module.init(context.clone(), config.clone()).unwrap();
+
+        // Only init if enabled
+        match config.get_bool("enabled") {
+            Ok(true) => {
+                info!("Initialising {}", name);
+                module.init(context.clone(), config.clone()).unwrap();
+            },
+            _ => warn!("Ignoring disabled module {}", name),
+        }
     }
 }
