@@ -2,8 +2,8 @@
 
 [workspace]
 members = [
-    "main",            # Standard 'main' provider
     "sdk",             # The SDK library for modules
+    "sample",          # Sample 'main' provider
     "modules/sample_subscriber",  # An example subscriber module
     "modules/sample_publisher",   # An example subscriber module
 ]

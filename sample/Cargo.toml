@@ -1,10 +1,10 @@
-# Standard 'main' provider for Caryatid
+# Sample 'main' for a Caryatid process
 [package]
-name = "caryatid_main"
+name = "caryatid_sample"
 version = "0.1.0"
 edition = "2021"
 authors = ["Paul Clark <paul.clark@iohk.io>"]
-description = "Standard 'main' for a Caryatid process"
+description = "Sample 'main' for a Caryatid process"
 
 [dependencies]
 caryatid_process = { path = "../process" }

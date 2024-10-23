@@ -1,4 +1,4 @@
-//! Standard 'main' for a Caryatid process
+//! Sample 'main' for a Caryatid process
 //! Loads and runs modules built with caryatid-sdk
 
 use caryatid_process::Process;
@@ -18,11 +18,11 @@ pub async fn main() -> Result<()> {
     // Initialise tracing
     tracing_subscriber::fmt::init();
 
-    info!("Caryatid modular framework");
+    info!("Caryatid modular framework - sample process");
 
     // Read the config
     let config = Arc::new(Config::builder()
-        .add_source(File::with_name("main/caryatid"))
+        .add_source(File::with_name("sample/caryatid"))
         .add_source(Environment::with_prefix("CARYATID"))
         .build()
         .unwrap());
