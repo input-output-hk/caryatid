@@ -2,7 +2,7 @@
 
 [workspace]
 members = [
-    "process",         # Executable for a single process
+    "main",            # Standard 'main' provider
     "sdk",             # The SDK library for modules
     "modules/sample-subscriber",  # An example subscriber module
     "modules/sample-publisher",   # An example subscriber module

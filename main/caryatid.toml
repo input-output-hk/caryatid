@@ -1,18 +1,14 @@
 # Top-level configuration for Caryatid process
 
-[paths]
-modules = "./target/debug"
-
-[modules.sample-subscriber]
-lib = "libsample_subscriber.so"
+[sample-subscriber]
 topic = "sample.test"
 
-[modules.sample-publisher]
-lib = "libsample_publisher.so"
+[sample-publisher]
 topic = "sample.test"
 
 #[message-bus.rabbit-mq]
 
 [message-bus.in-memory]
 workers = 10
+
 

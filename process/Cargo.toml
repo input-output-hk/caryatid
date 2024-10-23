@@ -1,20 +1,21 @@
-# Caryatid process executable
+# Caraytid process - loads and runs modules
 [package]
-name = "caryatid"
+name = "caryatid_process"
 version = "0.1.0"
 edition = "2021"
 authors = ["Paul Clark <paul.clark@iohk.io>"]
-description = "The Caryatid framework process, containing pluggable modules"
+description = "Caryatid process"
 
 [dependencies]
-caryatid-sdk = { path = "../sdk" }
-libloading = "0.7"
+caryatid_sdk = { path = "../sdk" }
 futures = "0.3"
 anyhow = "1.0"
 tokio = { version = "1", features = ["full"] }
-serde_json = "1.0"
 config = "0.14.0"
 tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
 lapin = "2.5.0"
 serde = "1.0.210"
+serde_json = "1.0"
+
+[lib]
+path = "src/process.rs"

@@ -58,9 +58,6 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             // Initialise own own tracing
             tracing_subscriber::fmt::init();
 
-            // Enter runtime to get TLS set up
-            let _guard = context.runtime.enter();
-
             let module = #struct_name {};
             module.init(context, config).unwrap();
             Arc::new(module)
