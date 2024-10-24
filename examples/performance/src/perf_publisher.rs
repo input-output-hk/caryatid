@@ -17,6 +17,7 @@ pub struct PerfPublisher;
 
 const DEFAULT_COUNT: i64 = 1000_000;
 const DEFAULT_THREADS: i64 = 1;
+const DEFAULT_LENGTH: i64 = 100;
 
 impl PerfPublisher {
 
@@ -24,10 +25,15 @@ impl PerfPublisher {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
-        info!("Creating performance publisher on '{}'", topic);
-
         let threads = config.get_int("threads").unwrap_or(DEFAULT_THREADS);
         let count = config.get_int("count").unwrap_or(DEFAULT_COUNT);
+        let length = config.get_int("length").unwrap_or(DEFAULT_LENGTH);
+
+        info!("Creating performance-testing publisher on '{topic}'");
+        info!(" - with {threads} threads");
+        info!(" - publishing {count} messages with {length} bytes of data");
+
+        let data = "*".repeat(length.try_into().unwrap());
 
         let message_bus = context.message_bus.clone();
         tokio::spawn(async move {
@@ -36,15 +42,15 @@ impl PerfPublisher {
             for thread in 1..=threads {
                 let message_bus = message_bus.clone();
                 let topic = topic.clone();
-                info!("Starting thread {thread} publishing {count} messages");
+                let data = data.clone();
+                info!("Starting thread {thread}");
 
                 handles.push(tokio::spawn(async move {
                     for i in 1..=count {
-
                         let message = Arc::new(json!({
-                            "index": i
+                            "index": i,
+                            "data": data
                         }));
-
                         message_bus.publish(&topic, message)
                             .await.expect("Failed to publish message");
                     }

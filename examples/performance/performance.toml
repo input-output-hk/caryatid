@@ -3,8 +3,15 @@
 [perf-publisher]
 enabled = true
 topic = "performance.test"
-count = 1000000
-threads = 1
+
+# Number of messages per thread
+count = 100000
+
+# Number of threads
+threads = 4
+
+# Length of 'data' string
+length = 1000000
 
 [perf-subscriber]
 enabled = true

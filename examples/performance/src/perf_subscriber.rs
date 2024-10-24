@@ -3,7 +3,7 @@ use caryatid_sdk::{Context, MessageBusExt, Module, module};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
-use tracing::{info, error};
+use tracing::info;
 use tokio::time::Instant;
 use tokio::sync::Mutex;
 
@@ -55,20 +55,13 @@ impl PerfSubscriber {
                        }
                    }
                    _ => {
-                       match message["index"].as_u64() {
-                           Some(_index) => {
-                               let now = Instant::now();
-                               let mut stats = stats.lock().await;
-                               stats.last_message_time = now;
-                               if stats.count==0 {
-                                   stats.first_message_time = now;
-                               }
-                               stats.count += 1;
-                           }
-                           _ => {
-                               error!("Weird message: {:?}", message);
-                           }
+                       let now = Instant::now();
+                       let mut stats = stats.lock().await;
+                       stats.last_message_time = now;
+                       if stats.count==0 {
+                           stats.first_message_time = now;
                        }
+                       stats.count += 1;
                    }
                }
            });
