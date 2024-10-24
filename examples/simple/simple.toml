@@ -1,10 +1,10 @@
 # Top-level configuration for Caryatid process
 
-[sample-subscriber]
+[simple-subscriber]
 enabled = true
 topic = "sample.test"
 
-[sample-publisher]
+[simple-publisher]
 enabled = true
 topic = "sample.test"
 

@@ -8,8 +8,9 @@ use tracing::info;
 use tracing_subscriber;
 use std::sync::Arc;
 
-extern crate sample_publisher;
-extern crate sample_subscriber;
+// Modules in the same crate
+mod simple_subscriber;
+mod simple_publisher;
 
 /// Standard main
 #[tokio::main]
@@ -22,7 +23,7 @@ pub async fn main() -> Result<()> {
 
     // Read the config
     let config = Arc::new(Config::builder()
-        .add_source(File::with_name("sample/caryatid"))
+        .add_source(File::with_name("simple"))
         .add_source(Environment::with_prefix("CARYATID"))
         .build()
         .unwrap());
@@ -31,8 +32,8 @@ pub async fn main() -> Result<()> {
     let process = Process::create(config).await;
 
     // Register modules
-    sample_publisher::register();
-    sample_subscriber::register();
+    simple_subscriber::register();
+    simple_publisher::register();
 
     // Run it
     process.run().await?;

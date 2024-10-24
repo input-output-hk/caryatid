@@ -2,10 +2,9 @@
 
 [workspace]
 members = [
-    "sdk",             # The SDK library for modules
-    "sample",          # Sample 'main' provider
-    "modules/sample_subscriber",  # An example subscriber module
-    "modules/sample_publisher",   # An example subscriber module
+    "sdk",                # The SDK library for modules
+    "process",            # Library for processes
+    "examples/simple",    # Sample process
 ]
 
 resolver = "2"

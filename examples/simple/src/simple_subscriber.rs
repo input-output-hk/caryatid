@@ -1,19 +1,19 @@
-//! Sample Caraytid module - subscriber side
+//! Simple Caraytid module - subscriber side
 use caryatid_sdk::{Context, MessageBusExt, Module, module};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use tracing::{info};
 
-/// Sample module
+/// Simple module
 // Define it as a module, with a name and description
 #[module(
-    name = "sample-subscriber",
-    description = "Sample subscriber module"
+    name = "simple-subscriber",
+    description = "Simple subscriber module"
 )]
-pub struct SampleSubscriber;
+pub struct SimpleSubscriber;
 
-impl SampleSubscriber {
+impl SimpleSubscriber {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
@@ -21,7 +21,7 @@ impl SampleSubscriber {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
-        info!("Creating sample subscriber on '{}'", topic);
+        info!("Creating simple subscriber on '{}'", topic);
 
         // Register a subscriber on the message bus to listen for messages
         // Messages are passed as JSON objects, in an Arc

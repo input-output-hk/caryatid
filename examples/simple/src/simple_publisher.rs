@@ -6,15 +6,15 @@ use config::Config;
 use tracing::{info};
 use serde_json::json;
 
-/// Sample module
+/// Simple publisher module
 // Define it as a module, with a name and description
 #[module(
-    name = "sample-publisher",
-    description = "Sample publisher module"
+    name = "simple-publisher",
+    description = "Simple publisher module"
 )]
-pub struct SamplePublisher;
+pub struct SimplePublisher;
 
-impl SamplePublisher {
+impl SimplePublisher {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
@@ -23,7 +23,7 @@ impl SamplePublisher {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
-        info!("Creating sample publisher on '{}'", topic);
+        info!("Creating simple publisher on '{}'", topic);
 
         // Send a test JSON message to the message bus on 'sample_topic'
         // Let this run async
