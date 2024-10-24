@@ -12,6 +12,9 @@ use std::sync::Arc;
 mod simple_subscriber;
 mod simple_publisher;
 
+// External modules
+extern crate clock;
+
 /// Standard main
 #[tokio::main]
 pub async fn main() -> Result<()> {
@@ -34,6 +37,7 @@ pub async fn main() -> Result<()> {
     // Register modules
     simple_subscriber::register();
     simple_publisher::register();
+    clock::register();
 
     // Run it
     process.run().await?;

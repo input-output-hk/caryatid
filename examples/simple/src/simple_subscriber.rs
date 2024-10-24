@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use tracing::{info};
+use chrono::{DateTime, Utc, Local};
 
 /// Simple module
 // Define it as a module, with a name and description
@@ -28,6 +29,24 @@ impl SimpleSubscriber {
         context.message_bus.subscribe(&topic,
                                       |message: Arc<serde_json::Value>| {
            info!("Received: {:?}", message);
+        })?;
+
+        // Register for clock ticks too
+        context.message_bus.subscribe("clock.tick",
+                                      |message: Arc<serde_json::Value>| {
+           match message["time"].as_str() {
+               Some(iso_time) => {
+                   match iso_time.parse::<DateTime<Utc>>() {
+                       Ok(datetime) => {
+                           let localtime = datetime.with_timezone(&Local);
+                           info!("The time sponsored by Caryatid is {}",
+                                 localtime.format("%H:%M:%S").to_string())
+                       }
+                       _ => {}
+                   }
+               }
+               _ => {}
+           }
         })?;
 
         Ok(())

@@ -8,6 +8,9 @@ topic = "sample.test"
 enabled = true
 topic = "sample.test"
 
+[clock]
+enabled = true
+
 #[message-bus.rabbit-mq]
 
 [message-bus.in-memory]

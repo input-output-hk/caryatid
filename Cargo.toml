@@ -4,6 +4,11 @@
 members = [
     "sdk",                # The SDK library for modules
     "process",            # Library for processes
+
+    # Core modules
+    "modules/clock",      # System clock
+
+    # Examples
     "examples/simple",    # Sample process
 ]
 
