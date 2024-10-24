@@ -1,20 +1,18 @@
-# Top-level configuration for Caryatid process
-
-[perf-subscriber]
-enabled = true
-topic = "performance.test"
+# Configuration for Caryatid performance-testing process
 
 [perf-publisher]
 enabled = true
 topic = "performance.test"
 count = 1000000
+threads = 1
 
-[clock]
+[perf-subscriber]
 enabled = true
+topic = "performance.test"
 
-[message-bus.rabbit-mq]
+#[message-bus.rabbit-mq]
 
 [message-bus.in-memory]
-workers = 10
+workers = 1
 
 

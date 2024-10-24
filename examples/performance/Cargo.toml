@@ -20,4 +20,5 @@ tracing-subscriber = "0.3.18"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1.0.132"
 chrono = "0.4.38"
+futures = "0.3.31"
 
