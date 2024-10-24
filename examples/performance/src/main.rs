@@ -1,5 +1,4 @@
-//! Sample 'main' for a Caryatid process
-//! Loads and runs modules built with caryatid-sdk
+//! 'main' for Caryatid performance test
 
 use caryatid_process::Process;
 use anyhow::Result;
@@ -9,11 +8,8 @@ use tracing_subscriber;
 use std::sync::Arc;
 
 // Modules in the same crate
-mod simple_subscriber;
-mod simple_publisher;
-
-// External modules
-extern crate clock;
+mod perf_subscriber;
+mod perf_publisher;
 
 /// Standard main
 #[tokio::main]
@@ -22,11 +18,11 @@ pub async fn main() -> Result<()> {
     // Initialise tracing
     tracing_subscriber::fmt::init();
 
-    info!("Caryatid modular framework - simple example process");
+    info!("Caryatid modular framework - performance test");
 
     // Read the config
     let config = Arc::new(Config::builder()
-        .add_source(File::with_name("simple"))
+        .add_source(File::with_name("performance"))
         .add_source(Environment::with_prefix("CARYATID"))
         .build()
         .unwrap());
@@ -35,9 +31,8 @@ pub async fn main() -> Result<()> {
     let process = Process::create(config).await;
 
     // Register modules
-    simple_subscriber::register();
-    simple_publisher::register();
-    clock::register();
+    perf_subscriber::register();
+    perf_publisher::register();
 
     // Run it
     process.run().await?;

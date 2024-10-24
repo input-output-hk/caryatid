@@ -9,7 +9,8 @@ members = [
     "modules/clock",      # System clock
 
     # Examples
-    "examples/simple",    # Sample process
+    "examples/simple",      # Sample process
+    "examples/performance", # Performance test
 ]
 
 resolver = "2"
