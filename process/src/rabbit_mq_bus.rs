@@ -1,6 +1,7 @@
 //! MessageBus implementation for RabbitMQ
 use lapin::{
-    options::{BasicConsumeOptions, BasicPublishOptions, QueueDeclareOptions},
+    options::{BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions,
+              QueueDeclareOptions, QueueBindOptions},
     types::FieldTable,
     BasicProperties, Channel, Connection, ConnectionProperties,
 };
@@ -18,13 +19,14 @@ use tracing::{info, error};
 pub struct RabbitMQBus<M: MessageBounds> {
     connection: Arc<Mutex<Connection>>,  // RabbitMQ connection
     channel: Arc<Mutex<Channel>>,        // RabbitMQ outgoing channel
+    exchange: String,                    // Exchange name
     _phantom: PhantomData<M>,      // Required to associate with <M> (eww)
 }
 
 impl<M: MessageBounds> RabbitMQBus<M> {
 
     // New
-    pub async fn new(_config: &Config) -> Result<Self> {
+    pub async fn new(config: &Config) -> Result<Self> {
         // Connect to RabbitMQ server
         let addr = std::env::var("AMQP_ADDR")
             .unwrap_or_else(|_| "amqp://127.0.0.1:5672/%2f".into());
@@ -38,13 +40,18 @@ impl<M: MessageBounds> RabbitMQBus<M> {
 
         info!("RabbitMQ connected");
 
+        // Get exchange name
+        let exchange_name = config.get_string("exchange")
+            .unwrap_or("caryatid".to_string());
+
         // Create a channel for outgoing messages
         let channel = connection.create_channel().await?;
 
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
             channel: Arc::new(Mutex::new(channel)),
-            _phantom: PhantomData
+            exchange: exchange_name,
+            _phantom: PhantomData,
         })
     }
 }
@@ -59,15 +66,10 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
         let channel = self.channel.clone();
         let message = Arc::clone(&message);
         let topic = topic.to_string();
+        let exchange = self.exchange.clone();
 
         Box::pin(async move {
             let channel = channel.lock().await;
-
-            // Declare the queue first if it doesn't exist
-            channel
-                .queue_declare(&topic, QueueDeclareOptions::default(),
-                               FieldTable::default())
-                .await?;
 
             // Serialise the message
             let payload = serde_cbor::ser::to_vec(&*message)?;
@@ -75,7 +77,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
             // Publish the message to the queue
             channel
                 .basic_publish(
-                    "",
+                    &exchange,
                     &topic,
                     BasicPublishOptions::default(),
                     &payload,
@@ -97,6 +99,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
         let connection = self.connection.clone();  // Clone the connection
         let subscriber = Arc::new(subscriber); // Shared subscriber function
         let topic = topic.to_string();
+        let exchange = self.exchange.clone();
 
         tokio::spawn(async move {
 
@@ -107,17 +110,41 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                 .await
                 .expect("Failed to create channel");
 
-            // Declare the queue
+            // Declare the topic exchange
+
             channel
+                .exchange_declare(
+                    &exchange,
+                    lapin::ExchangeKind::Topic,
+                    ExchangeDeclareOptions::default(),
+                    FieldTable::default(),
+                )
+                .await
+                .expect("Failed to declare exchange");
+
+            // Declare the queue
+            let queue = channel
                 .queue_declare(&topic, QueueDeclareOptions::default(),
                                FieldTable::default())
                 .await
                 .expect("Failed to declare queue");
 
+            // Bind the queue to the exchange with the specified pattern
+            channel
+                .queue_bind(
+                    queue.name().as_str(),
+                    &exchange,
+                    &topic,
+                    QueueBindOptions::default(),
+                    FieldTable::default(),
+                )
+                .await
+                .expect("Failed to bind queue");
+
             // Start consuming messages from the queue
             let mut consumer = channel
                 .basic_consume(
-                    &topic,
+                    queue.name().as_str(),
                     "",
                     BasicConsumeOptions::default(),
                     FieldTable::default(),
