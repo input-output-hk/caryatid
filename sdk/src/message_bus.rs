@@ -6,7 +6,6 @@ use std::sync::Arc;
 // Subscriber pattern function types
 pub type Subscriber<M> = dyn Fn(Arc<M>) ->
     BoxFuture<'static, ()> + Send + Sync + 'static;
-pub type BoxedSubscriber<M> = Box<Subscriber<M>>;
 
 // Message bounds trait (awaiting trait aliases)
 pub trait MessageBounds: Send + Sync + Clone + 'static {}
@@ -21,7 +20,7 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
                -> BoxFuture<'static, anyhow::Result<()>>;
 
     // Register an subscriber function - note sync
-    fn register_subscriber(&self, topic: &str, subscriber: BoxedSubscriber<M>)
+    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
                          -> Result<()>;
 
     // Shut down
@@ -43,8 +42,8 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
     where
         F: Fn(Arc<M>) + MessageBounds,
     {
-        let boxed_subscriber: BoxedSubscriber<M> =
-            Box::new(move |message: Arc<M>| {
+        let arc_subscriber: Arc<Subscriber<M>> =
+            Arc::new(move |message: Arc<M>| {
             let subscriber = subscriber.clone();
             async move {
                 subscriber(message);
@@ -52,7 +51,7 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
             .boxed()
         });
 
-        self.register_subscriber(topic, boxed_subscriber)
+        self.register_subscriber(topic, arc_subscriber)
     }
 }
 

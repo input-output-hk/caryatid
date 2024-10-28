@@ -5,14 +5,15 @@ use anyhow::Result;
 use config::Config;
 use tracing::error;
 use futures::future::BoxFuture;
-use caryatid_sdk::message_bus::{MessageBus, BoxedSubscriber, MessageBounds};
+use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
 use tracing::info;
+use crate::match_topic::match_topic;
 
 const DEFAULT_WORKERS: i64 = 4;
 
 struct PatternSubscriber<M: MessageBounds> {
     pattern: String,
-    subscriber: Arc<BoxedSubscriber<M>>
+    subscriber: Arc<Subscriber<M>>,
 }
 
 /// In-memory, zero-copy pub-sub bus
@@ -41,7 +42,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
         let mut worker_txs = Vec::new();
         for _ in 0..num_workers {
             let (worker_tx, mut worker_rx) =
-                mpsc::channel::<(Arc<BoxedSubscriber<M>>, Arc<M>)>(100);
+                mpsc::channel::<(Arc<Subscriber<M>>, Arc<M>)>(100);
             worker_txs.push(worker_tx);
 
             // Spawn worker tasks that handle individual subscriber invocations
@@ -61,7 +62,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
                 // Lock the subscribers for the topic
                 let subscribers = subs_clone.lock().await;
                 for patsub in subscribers.iter() {
-                    if Self::match_topic(&patsub.pattern, &topic) {
+                    if match_topic(&patsub.pattern, &topic) {
                         // For each subscriber, dispatch the task to a worker
                         let worker_tx =
                             &worker_txs[round_robin_index % num_workers];
@@ -81,62 +82,6 @@ impl<M: MessageBounds> InMemoryBus<M> {
 
         InMemoryBus { subscribers, sender }
     }
-
-    /// Match a dotted topic against a pattern - implements as RabbitMQ:
-    ///   * - match one word
-    ///   # - match zero or more words
-    fn match_topic(pattern: &str, topic: &str) -> bool {
-
-        let pattern_parts: Vec<&str> = pattern.split('.').collect();
-        let topic_parts: Vec<&str> = topic.split('.').collect();
-
-        let mut i = 0;
-        let mut j = 0;
-
-        while i < pattern_parts.len() && j < topic_parts.len() {
-
-            match pattern_parts[i] {
-                // * matches exactly one word
-                "*" => {
-                    i += 1;
-                    j += 1;
-                }
-
-                // # matches zero or more words
-                "#" => {
-                    if i == pattern_parts.len() - 1 {
-                        // All the rest
-                        return true;
-                    }
-
-                    // Try to match the next part of the pattern to any
-                    // subsequent part of the topic
-                    while j < topic_parts.len() {
-                        if Self::match_topic(&pattern_parts[i + 1..].join("."),
-                                             &topic_parts[j..].join(".")) {
-                            return true;
-                        }
-                        j += 1;
-                    }
-
-                    // No match found for the rest of the topic after #
-                    return false;
-                }
-
-                // Direct match for a part?
-                part if part == topic_parts[j] => {
-                    i += 1;
-                    j += 1;
-                }
-
-                // No match
-                _ => return false
-            }
-        }
-
-        // If we reached the end of both the pattern and topic, it's a match
-        i == pattern_parts.len() && j == topic_parts.len()
-    }
 }
 
 impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
@@ -155,7 +100,7 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
     }
 
     // Subscribe for a message with an subscriber function
-    fn register_subscriber(&self, topic: &str, subscriber: BoxedSubscriber<M>)
+    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
                          -> Result<()> {
         let subscribers = self.subscribers.clone();
         let topic = topic.to_string();
@@ -163,7 +108,7 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
             let mut subscribers = subscribers.lock().await;
             subscribers.push(PatternSubscriber {
                 pattern: topic,
-                subscriber: subscriber.into()
+                subscriber: subscriber
             });
         });
 

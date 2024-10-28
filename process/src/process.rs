@@ -1,7 +1,7 @@
 //! Main process for a Caryatid framework installation
 //! Loads and runs modules built with caryatid-sdk
 
-use caryatid_sdk::{Context, MessageBus};
+use caryatid_sdk::Context;
 use caryatid_sdk::config::get_sub_config;
 use anyhow::Result;
 use std::sync::Arc;
@@ -15,6 +15,11 @@ use in_memory_bus::InMemoryBus;
 mod rabbit_mq_bus;
 use rabbit_mq_bus::RabbitMQBus;
 
+mod routing_bus;
+use routing_bus::RoutingBus;
+
+mod match_topic;
+
 /// Main Process structure
 pub struct Process {
     config: Arc<Config>,
@@ -26,24 +31,25 @@ impl Process {
     /// Create a process with the given config
     pub async fn create(config: Arc<Config>) -> Arc<Self> {
 
-        // Create a message bus according to config
-        let message_bus: Arc<dyn MessageBus<serde_json::Value>>;
-        if let Ok(_table) = config.get_table("message-bus.rabbit-mq") {
-            message_bus = Arc::new(
-                RabbitMQBus::new(&get_sub_config(&config,
+        // Create individual message buses
+        let rabbit_mq_bus = Arc::new(
+            RabbitMQBus::<serde_json::Value>::new(&get_sub_config(&config,
                                                  "message-bus.rabbit-mq"))
-                    .await
-                    .expect("Can't create RabbitMQ bus")
-            );
-        }
-        else {
-            message_bus = Arc::new(InMemoryBus::new(
-                &get_sub_config(&config, "message-bus.in-memory")));
-        }
+                .await
+                .expect("Can't create RabbitMQ bus"));
+
+        let in_memory_bus = Arc::new(InMemoryBus::<serde_json::Value>::new(
+            &get_sub_config(&config, "message-bus.in-memory")));
+
+        // Create routing message bus
+        let routing_bus = Arc::new(RoutingBus::<serde_json::Value>::new(
+            &get_sub_config(&config, "message-router"),
+            in_memory_bus.clone(),
+            rabbit_mq_bus.clone()));
 
         // Create the shared context
         let context = Arc::new(Context::new(config.clone(),
-                                            message_bus.clone()));
+                                            routing_bus.clone()));
 
         Arc::new(Self { config, context })
     }

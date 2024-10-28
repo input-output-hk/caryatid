@@ -10,7 +10,7 @@ use config::Config;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use futures::future::BoxFuture;
-use caryatid_sdk::message_bus::{MessageBus, BoxedSubscriber, MessageBounds};
+use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
 use std::marker::PhantomData;
 use tracing::{info, error};
 
@@ -92,7 +92,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
     fn register_subscriber(
         &self,
         topic: &str,
-        subscriber: BoxedSubscriber<M>,
+        subscriber: Arc<Subscriber<M>>,
     ) -> Result<()> {
         let connection = self.connection.clone();  // Clone the connection
         let subscriber = Arc::new(subscriber); // Shared subscriber function

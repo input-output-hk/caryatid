@@ -2,7 +2,7 @@
 
 [simple-subscriber]
 enabled = true
-topic = "sample.#"
+topic = "sample.test"
 
 [simple-publisher]
 enabled = true
@@ -11,9 +11,17 @@ topic = "sample.test"
 [clock]
 enabled = true
 
-#[message-bus.rabbit-mq]
+[message-bus.rabbit-mq]
 
 [message-bus.in-memory]
 workers = 10
 
+# Message routing
+[[message-router.route]]  # Route clock internally only
+pattern = "clock.#"
+in-memory = true
 
+[[message-router.route]]  # Everything else goes to both
+pattern = "#"
+in-memory = true
+rabbit-mq = true
