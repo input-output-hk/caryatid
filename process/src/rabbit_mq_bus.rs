@@ -28,13 +28,12 @@ impl<M: MessageBounds> RabbitMQBus<M> {
     // New
     pub async fn new(config: &Config) -> Result<Self> {
         // Connect to RabbitMQ server
-        let addr = std::env::var("AMQP_ADDR")
-            .unwrap_or_else(|_| "amqp://127.0.0.1:5672/%2f".into());
-
-        info!("Connecting to RabbitMQ at {}", addr);
+        let url = config.get_string("url")
+            .unwrap_or("amqp://127.0.0.1:5672/%2f".to_string());
+        info!("Connecting to RabbitMQ at {}", url);
 
         let connection =
-            Connection::connect(&addr, ConnectionProperties::default())
+            Connection::connect(&url, ConnectionProperties::default())
             .await
             .expect("Failed to connect to RabbitMQ");
 
