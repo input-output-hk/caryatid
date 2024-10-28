@@ -1,6 +1,5 @@
 // In-memory pub-sub bus with multi-threaded async workers
 use tokio::sync::{mpsc, Mutex};
-use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
@@ -11,12 +10,18 @@ use tracing::info;
 
 const DEFAULT_WORKERS: i64 = 4;
 
+struct PatternSubscriber<M: MessageBounds> {
+    pattern: String,
+    subscriber: Arc<BoxedSubscriber<M>>
+}
+
+/// In-memory, zero-copy pub-sub bus
 pub struct InMemoryBus<M: MessageBounds> {
 
-    // Map of subscriber functions by topic
-    subscribers: Arc<Mutex<HashMap<String, Vec<Arc<BoxedSubscriber<M>>>>>>,
+    /// Subscribers
+    subscribers: Arc<Mutex<Vec<PatternSubscriber<M>>>>,
 
-    // Sender for received messages
+    /// Sender for received messages
     sender: mpsc::Sender<(String, Arc<M>)>,
 }
 
@@ -29,9 +34,8 @@ impl<M: MessageBounds> InMemoryBus<M> {
 
         info!("Creating in-memory message bus with {} workers", num_workers);
 
-        let subscribers: Arc<Mutex<HashMap<String,
-                                         Vec<Arc<BoxedSubscriber<M>>>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let subscribers: Arc<Mutex<Vec<PatternSubscriber<M>>>> =
+            Arc::new(Mutex::new(Vec::new()));
 
         // Create a task queue channel for each worker
         let mut worker_txs = Vec::new();
@@ -56,15 +60,16 @@ impl<M: MessageBounds> InMemoryBus<M> {
             while let Some((topic, message)) = receiver.recv().await {
                 // Lock the subscribers for the topic
                 let subscribers = subs_clone.lock().await;
-                if let Some(subscriber_list) = subscribers.get(&topic) {
-                    // For each subscriber, dispatch the task to a worker
-                    for subscriber in subscriber_list {
+                for patsub in subscribers.iter() {
+                    if Self::match_topic(&patsub.pattern, &topic) {
+                        // For each subscriber, dispatch the task to a worker
                         let worker_tx =
                             &worker_txs[round_robin_index % num_workers];
 
                         // Send the subscriber and the message to a worker
-                        if let Err(e) = worker_tx.send((subscriber.clone(),
-                                                        message.clone())).await {
+                        if let Err(e) = worker_tx.send(
+                            (patsub.subscriber.clone(), message.clone())
+                        ).await {
                             error!("Failed to send message to worker: {}", e);
                         }
 
@@ -75,6 +80,62 @@ impl<M: MessageBounds> InMemoryBus<M> {
         });
 
         InMemoryBus { subscribers, sender }
+    }
+
+    /// Match a dotted topic against a pattern - implements as RabbitMQ:
+    ///   * - match one word
+    ///   # - match zero or more words
+    fn match_topic(pattern: &str, topic: &str) -> bool {
+
+        let pattern_parts: Vec<&str> = pattern.split('.').collect();
+        let topic_parts: Vec<&str> = topic.split('.').collect();
+
+        let mut i = 0;
+        let mut j = 0;
+
+        while i < pattern_parts.len() && j < topic_parts.len() {
+
+            match pattern_parts[i] {
+                // * matches exactly one word
+                "*" => {
+                    i += 1;
+                    j += 1;
+                }
+
+                // # matches zero or more words
+                "#" => {
+                    if i == pattern_parts.len() - 1 {
+                        // All the rest
+                        return true;
+                    }
+
+                    // Try to match the next part of the pattern to any
+                    // subsequent part of the topic
+                    while j < topic_parts.len() {
+                        if Self::match_topic(&pattern_parts[i + 1..].join("."),
+                                             &topic_parts[j..].join(".")) {
+                            return true;
+                        }
+                        j += 1;
+                    }
+
+                    // No match found for the rest of the topic after #
+                    return false;
+                }
+
+                // Direct match for a part?
+                part if part == topic_parts[j] => {
+                    i += 1;
+                    j += 1;
+                }
+
+                // No match
+                _ => return false
+            }
+        }
+
+        // If we reached the end of both the pattern and topic, it's a match
+        i == pattern_parts.len() && j == topic_parts.len()
     }
 }
 
@@ -100,9 +161,10 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
         let topic = topic.to_string();
         tokio::spawn(async move {
             let mut subscribers = subscribers.lock().await;
-            subscribers.entry(topic)
-                .or_insert(Vec::new())
-                .push(Arc::new(subscriber));
+            subscribers.push(PatternSubscriber {
+                pattern: topic,
+                subscriber: subscriber.into()
+            });
         });
 
         Ok(())

@@ -2,7 +2,7 @@
 
 [simple-subscriber]
 enabled = true
-topic = "sample.test"
+topic = "sample.#"
 
 [simple-publisher]
 enabled = true
