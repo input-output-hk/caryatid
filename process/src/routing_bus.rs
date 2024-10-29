@@ -148,7 +148,7 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         Ok(())
     }
 
-    /// Shut down, clearing all subscribers
+    /// Shut down, shutting down all the buses
     fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
         let buses = self.buses.clone();
 
