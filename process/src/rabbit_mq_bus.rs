@@ -89,6 +89,14 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
         })
     }
 
+    /// Publish a message on a topic
+    fn request(&self, topic: &str, message: Arc<M>)
+               -> BoxFuture<'static, Result<M>> {
+        Box::pin(async move {
+            Ok(M::default())  // !!! todo
+        })
+    }
+
     // Subscribe to a topic
     fn register_subscriber(
         &self,

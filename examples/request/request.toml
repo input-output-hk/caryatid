@@ -1,0 +1,25 @@
+# Top-level configuration for request/response example Caryatid process
+
+[requester]
+enabled = true
+topic = "test.request"
+
+[responder]
+enabled = true
+topic = "test.request"
+
+[message-bus.external]
+class = "rabbit-mq"
+url = "amqp://127.0.0.1:5672/%2f"
+exchange = "caryatid"
+
+[message-bus.internal]
+class = "in-memory"
+workers = 10
+
+# Message routing
+[[message-router.route]]
+pattern = "#"
+bus = "internal"
+
+

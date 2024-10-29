@@ -99,7 +99,20 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
         })
     }
 
-    // Subscribe for a message with an subscriber function
+    /// Request/response on a given topic
+    fn request(&self, topic: &str, message: Arc<M>) ->
+        BoxFuture<'static, Result<M>> {
+        let topic = topic.to_string();
+        let sender = self.sender.clone();
+        let message = message.clone();
+
+        Box::pin(async move {
+            let _ = sender.send((topic, message)).await;
+            Ok(M::default())  // !!! todo
+        })
+    }
+
+    /// Subscribe for a message with an subscriber function
     fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
                          -> Result<()> {
         let subscribers = self.subscribers.clone();
