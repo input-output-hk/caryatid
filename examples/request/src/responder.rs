@@ -23,7 +23,7 @@ impl Responder {
 
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating responder on '{}'", topic);
-        context.message_bus.handle(&topic, Self::handler);
+        context.message_bus.handle(&topic, Self::handler)?;
 
         Ok(())
     }

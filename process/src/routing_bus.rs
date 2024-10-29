@@ -124,7 +124,7 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
 
     /// Request a response on a given topic
     fn request(&self, topic: &str, message: Arc<M>)
-               -> BoxFuture<'static, Result<M>> {
+               -> BoxFuture<'static, Result<Arc<M>>> {
 
         let routes = self.routes.clone();
         let topic = topic.to_string();

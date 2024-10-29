@@ -22,6 +22,9 @@ impl Requester {
 
         tokio::spawn(async move {
 
+            // Wait for responder to be ready
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
             let test_message = Arc::new(json!({
                 "message": "Hello, world!",
             }));

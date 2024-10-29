@@ -21,7 +21,7 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
 
     /// Request/response - as publish() but returns a result
     fn request(&self, topic: &str, message: Arc<M>)
-               -> BoxFuture<'static, anyhow::Result<M>>;
+               -> BoxFuture<'static, anyhow::Result<Arc<M>>>;
 
     /// Register an subscriber function - note sync
     fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
