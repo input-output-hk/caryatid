@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 /// Subscriber pattern function types
 pub type Subscriber<M> = dyn Fn(Arc<M>) ->
-    BoxFuture<'static, Arc<M>> + Send + Sync + 'static;
+    BoxFuture<'static, Arc<Result<M>>> + Send + Sync + 'static;
 
 /// Message bounds trait (awaiting trait aliases)
 pub trait MessageBounds: Send + Sync + Clone + Default + 'static {}
@@ -21,7 +21,7 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
 
     /// Request/response - as publish() but returns a result
     fn request(&self, topic: &str, message: Arc<M>)
-               -> BoxFuture<'static, anyhow::Result<Arc<M>>>;
+               -> BoxFuture<'static, anyhow::Result<Arc<Result<M>>>>;
 
     /// Register an subscriber function - note sync
     fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
@@ -45,7 +45,7 @@ pub trait MessageBusExt<M: MessageBounds> {
     fn handle<F, Fut>(&self, topic: &str, subscriber: F) -> Result<()>
     where
         F: Fn(Arc<M>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Arc<M>> + Send + 'static;
+        Fut: Future<Output = Arc<Result<M>>> + Send + 'static;
 }
 
 impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
@@ -58,7 +58,7 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
             Arc::new(move |message: Arc<M>| {
                 subscriber(message);
 
-                async move { Arc::new(M::default()) }.boxed()
+                async move { Arc::new(Ok(M::default())) }.boxed()
             });
 
         self.register_subscriber(topic, arc_subscriber)
@@ -67,7 +67,7 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
     fn handle<F, Fut>(&self, topic: &str, handler: F) -> Result<()>
     where
         F: Fn(Arc<M>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Arc<M>> + Send + 'static,
+        Fut: Future<Output = Arc<Result<M>>> + Send + 'static,
     {
         let arc_subscriber: Arc<Subscriber<M>> =
             Arc::new(move |message: Arc<M>| {

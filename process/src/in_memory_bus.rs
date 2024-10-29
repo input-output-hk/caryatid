@@ -21,7 +21,7 @@ struct PatternSubscriber<M: MessageBounds> {
 /// Wrapper for a message with a oneshot to send back a result
 struct Envelope<M: MessageBounds> {
     message: Arc<M>,
-    notify: Option<Sender<Arc<M>>>,
+    notify: Option<Sender<Arc<Result<M>>>>,
 }
 
 /// In-memory, zero-copy pub-sub bus
@@ -118,7 +118,7 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
 
     /// Request/response on a given topic
     fn request(&self, topic: &str, message: Arc<M>) ->
-        BoxFuture<'static, Result<Arc<M>>> {
+        BoxFuture<'static, Result<Arc<Result<M>>>> {
         let topic = topic.to_string();
         let sender = self.sender.clone();
         let message = message.clone();

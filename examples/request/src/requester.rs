@@ -32,7 +32,10 @@ impl Requester {
             info!("Sending {:?}", test_message);
 
             match message_bus.request(&topic, test_message).await {
-                Ok(result) => { info!("Got result: {:?}", result); },
+                Ok(result) => match result.as_ref() {
+                    Ok(response) => { info!("Got response: {:?}", response); },
+                    Err(e) => { error!("Got error: {e}"); }
+                },
                 Err(e) => { error!("Request failed: {e}"); }
             }
         });

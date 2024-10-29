@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use tracing::{info};
+use serde_json::Value;
 
 /// Responder module
 #[module(
@@ -14,9 +15,18 @@ pub struct Responder;
 
 impl Responder {
 
-    async fn handler(message: Arc<serde_json::Value>) -> Arc<serde_json::Value> {
+    async fn handler(message: Arc<Value>) -> Arc<Result<Value>> {
         info!("Handler received {:?}", message);
-        message
+
+        let mut message = (*message).clone();
+
+        if let Some(obj) = message.as_object_mut() {
+            obj.insert("response".to_string(),
+                       Value::String("Loud and clear".to_string()));
+        }
+
+        info!("Responding with {:?}", message);
+        Arc::new(Ok(message))
     }
 
     fn init(&self, context: Arc<Context>, config: Arc<Config>) -> Result<()> {

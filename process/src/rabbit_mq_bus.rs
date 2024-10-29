@@ -91,9 +91,9 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
 
     /// Publish a message on a topic
     fn request(&self, topic: &str, message: Arc<M>)
-               -> BoxFuture<'static, Result<Arc<M>>> {
+               -> BoxFuture<'static, Result<Arc<Result<M>>>> {
         Box::pin(async move {
-            Ok(Arc::new(M::default()))  // !!! todo
+            Ok(Arc::new(Ok(M::default())))  // !!! todo
         })
     }
 
