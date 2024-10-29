@@ -11,19 +11,21 @@ topic = "sample.test"
 [clock]
 enabled = true
 
-[message-bus.rabbit-mq]
+[message-bus.external]
+class = "rabbit-mq"
 url = "amqp://127.0.0.1:5672/%2f"
 exchange = "caryatid"
 
-[message-bus.in-memory]
+[message-bus.internal]
+class = "in-memory"
 workers = 10
 
 # Message routing
 [[message-router.route]]  # Route clock internally only
 pattern = "clock.#"
-in-memory = true
+bus = "internal"
 
 [[message-router.route]]  # Everything else goes to both
 pattern = "#"
-#in-memory = true
-rabbit-mq = true
+bus = [ "internal", "external" ]
+

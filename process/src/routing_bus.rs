@@ -3,21 +3,29 @@ use tokio::sync::Mutex;
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
-use futures::future::{BoxFuture, ready};
+use futures::future::BoxFuture;
 use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
-use tracing::info;
-use crate::InMemoryBus;
-use crate::RabbitMQBus;
+use tracing::{info, error};
 use crate::match_topic::match_topic;
+use caryatid_sdk::config::config_from_value;
+use std::collections::BTreeMap;
 
 struct Route<M: MessageBounds> {
     pattern: String,
-    in_memory_bus: Option<Arc<InMemoryBus<M>>>,
-    rabbit_mq_bus: Option<Arc<RabbitMQBus<M>>>
+    buses: Vec<Arc<dyn MessageBus<M>>>,
+}
+
+/// Message bus with ID
+pub struct BusInfo<M: MessageBounds> {
+    pub id: String,
+    pub bus: Arc<dyn MessageBus<M>>,
 }
 
 /// Routing super-bus
 pub struct RoutingBus<M: MessageBounds> {
+
+    /// Buses
+    buses: Arc<Mutex<BTreeMap<String, Arc<dyn MessageBus<M>>>>>,
 
     /// Routes
     routes: Arc<Mutex<Vec<Route<M>>>>,
@@ -25,41 +33,53 @@ pub struct RoutingBus<M: MessageBounds> {
 
 impl<M: MessageBounds> RoutingBus<M> {
     pub fn new(config: &Config,
-               in_memory_bus: Arc<InMemoryBus<M>>,
-               rabbit_mq_bus: Arc<RabbitMQBus<M>>) -> Self {
+               bus_infos: Arc<Vec<Arc<BusInfo<M>>>>) -> Self {
 
         info!("Creating routing bus:");
 
-        let mut routes: Vec<Route<M>> = Vec::new();
+        // Create buses map
+        let mut buses: BTreeMap<String, Arc<dyn MessageBus<M>>>
+            = BTreeMap::new();
+        for bus_info in bus_infos.iter() {
+            info!(" - Bus {}", bus_info.id);
+            buses.insert(bus_info.id.clone(), bus_info.bus.clone());
+        }
 
+        // Create routes
+        let mut routes: Vec<Route<M>> = Vec::new();
         if let Ok(rconfs) = config.get_array("route") {
             for rconf in rconfs {
                 if let Ok(rt) = rconf.into_table() {
-                    if let Some(pattern) = rt.get("pattern")
-                        .and_then(|v| v.clone().into_string().ok()) {
-                        let mut route = Route {
-                            pattern: pattern.clone(),
-                            in_memory_bus: None,
-                            rabbit_mq_bus: None
-                        };
+                    let rtc = config_from_value(rt);
+                    if let Ok(pattern) = rtc.get_string("pattern") {
 
-                        info!(" - Route {pattern} to:");
-                        if let Some(in_memory) = rt.get("in-memory")
-                            .and_then(|v| v.clone().into_bool().ok()) {
-                                if in_memory {
-                                    route.in_memory_bus =
-                                        Some(in_memory_bus.clone());
-                                    info!("   - in-memory");
+                        info!(" - Route {pattern} to: ");
+                        let mut route = Route { pattern, buses: Vec::new() };
+
+                        if let Ok(bus_id) = rtc.get_string("bus") {
+
+                            // Single bus
+                            if let Some(bus) = buses.get(&bus_id) {
+                                info!("   - {bus_id}");
+                                route.buses.push(bus.clone());
+                            } else {
+                                error!("No such bus id {bus_id}");
+                            }
+
+                        } else if let Ok(bus_id_vs) = rtc.get_array("bus") {
+
+                            // Multiple buses
+                            for bus_id_v in bus_id_vs {
+                                if let Ok(bus_id) = bus_id_v.into_string() {
+                                    if let Some(bus) = buses.get(&bus_id) {
+                                        info!("   - {bus_id}");
+                                        route.buses.push(bus.clone());
+                                    } else {
+                                        error!("No such bus id {bus_id}");
+                                    }
                                 }
                             }
-                        if let Some(rabbit_mq) = rt.get("rabbit-mq")
-                            .and_then(|v| v.clone().into_bool().ok()) {
-                                if rabbit_mq {
-                                    route.rabbit_mq_bus =
-                                        Some(rabbit_mq_bus.clone());
-                                    info!("   - rabbit-mq");
-                                }
-                            }
+                        }
 
                         routes.push(route);
                     }
@@ -67,9 +87,11 @@ impl<M: MessageBounds> RoutingBus<M> {
             }
         }
 
-        RoutingBus { routes: Arc::new(Mutex::new(routes)) }
+        Self {
+            buses: Arc::new(Mutex::new(buses)),
+            routes: Arc::new(Mutex::new(routes))
+        }
     }
-
 }
 
 impl<M> MessageBus<M> for RoutingBus<M>
@@ -90,15 +112,9 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
             for route in routes.iter() {
                 // Check for topic match
                 if match_topic(&route.pattern, &topic) {
-                    if let Some(in_memory_bus) = &route.in_memory_bus {
-                        let _ = in_memory_bus.publish(&topic, message.clone())
-                            .await;
+                    for bus in route.buses.iter() {
+                        let _ = bus.publish(&topic, message.clone()).await;
                     }
-                    if let Some(rabbit_mq_bus) = &route.rabbit_mq_bus {
-                        let _ = rabbit_mq_bus.publish(&topic, message.clone())
-                            .await;
-                    }
-
                     break;  // Stop after match
                 }
             }
@@ -120,15 +136,10 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
             for route in routes.iter() {
                 // Check for topic match
                 if match_topic(&route.pattern, &topic) {
-                    if let Some(in_memory_bus) = &route.in_memory_bus {
-                        let _ = in_memory_bus.register_subscriber(&topic,
-                                                         subscriber.clone());
+                    for bus in route.buses.iter() {
+                        let _ = bus.register_subscriber(&topic,
+                                                        subscriber.clone());
                     }
-                    if let Some(rabbit_mq_bus) = &route.rabbit_mq_bus {
-                        let _ = rabbit_mq_bus.register_subscriber(&topic,
-                                                         subscriber.clone());
-                    }
-
                     break;  // Stop after match
                 }
             }
@@ -139,7 +150,16 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
 
     /// Shut down, clearing all subscribers
     fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
-        Box::pin(ready(Ok(())))
+        let buses = self.buses.clone();
+
+        Box::pin(async move {
+            let buses = buses.lock().await;
+            for (_, bus) in buses.iter() {
+                let _ = bus.shutdown().await;
+            }
+
+            Ok(())
+        })
     }
 }
 
