@@ -32,8 +32,7 @@ pub struct Process {
 impl Process {
 
     /// Create a bus of the given type
-    async fn create_bus(id: String, class: String,
-                        config: &Config) -> Result<BusInfo<MType>> {
+    async fn create_bus(id: String, class: String, config: &Config) -> Result<BusInfo<MType>> {
 
         let bus: Arc<dyn MessageBus<MType>> = match class.as_str() {
 
@@ -90,8 +89,7 @@ impl Process {
             Arc::new(buses)));
 
         // Create the shared context
-        let context = Arc::new(Context::new(config.clone(),
-                                            routing_bus.clone()));
+        let context = Arc::new(Context::new(config.clone(), routing_bus.clone()));
 
         Arc::new(Self { config, context })
     }

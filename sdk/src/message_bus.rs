@@ -16,16 +16,14 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
 
     /// Publish a message - note async but not defined as such because this
     /// is used dynamically
-    fn publish(&self, topic: &str, message: Arc<M>)
-               -> BoxFuture<'static, anyhow::Result<()>>;
+    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, anyhow::Result<()>>;
 
     /// Request/response - as publish() but returns a result
     fn request(&self, topic: &str, message: Arc<M>)
                -> BoxFuture<'static, anyhow::Result<Arc<Result<M>>>>;
 
     /// Register an subscriber function - note sync
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
-                         -> Result<()>;
+    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>) -> Result<()>;
 
     /// Shut down
     fn shutdown(&self) -> BoxFuture<'static, anyhow::Result<()>>;

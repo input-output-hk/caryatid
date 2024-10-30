@@ -51,8 +51,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl Module for #struct_name {
 
             // Implement init, calling down to struct's own
-            fn init(&self, context: Arc<Context>, config: Arc<Config>)
-                    -> anyhow::Result<()> {
+            fn init(&self, context: Arc<Context>, config: Arc<Config>) -> anyhow::Result<()> {
                 #struct_name::init(self, context, config)
             }
 

@@ -58,8 +58,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
             // Spawn worker tasks that handle individual subscriber invocations
             tokio::spawn(async move {
                 while let Some((subscriber, envelope)) = worker_rx.recv().await {
-                    let result =
-                        subscriber(envelope.lock().await.message.clone()).await;
+                    let result = subscriber(envelope.lock().await.message.clone()).await;
                     let mut envelope = envelope.lock().await;
                     if let Some(notify) = envelope.notify.take() {
                         let _ = notify.send(result);
@@ -80,13 +79,11 @@ impl<M: MessageBounds> InMemoryBus<M> {
                 for patsub in subscribers.iter() {
                     if match_topic(&patsub.pattern, &topic) {
                         // For each subscriber, dispatch the task to a worker
-                        let worker_tx =
-                            &worker_txs[round_robin_index % num_workers];
+                        let worker_tx = &worker_txs[round_robin_index % num_workers];
 
                         // Send the subscriber and the message to a worker
-                        if let Err(e) = worker_tx.send(
-                            (patsub.subscriber.clone(), envelope.clone())
-                        ).await {
+                        if let Err(e) = worker_tx.send((patsub.subscriber.clone(),
+                                                        envelope.clone())).await {
                             error!("Failed to send message to worker: {}", e);
                         }
 

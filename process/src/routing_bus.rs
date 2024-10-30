@@ -38,8 +38,7 @@ impl<M: MessageBounds> RoutingBus<M> {
         info!("Creating routing bus:");
 
         // Create buses map
-        let mut buses: BTreeMap<String, Arc<dyn MessageBus<M>>>
-            = BTreeMap::new();
+        let mut buses: BTreeMap<String, Arc<dyn MessageBus<M>>> = BTreeMap::new();
         for bus_info in bus_infos.iter() {
             info!(" - Bus {}", bus_info.id);
             buses.insert(bus_info.id.clone(), bus_info.bus.clone());
@@ -98,8 +97,7 @@ impl<M> MessageBus<M> for RoutingBus<M>
 where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
 
     /// Publish a message on a given topic
-    fn publish(&self, topic: &str, message: Arc<M>)
-               -> BoxFuture<'static, Result<()>> {
+    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
 
         let routes = self.routes.clone();
         let topic = topic.to_string();
@@ -123,8 +121,7 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
     }
 
     /// Request a response on a given topic
-    fn request(&self, topic: &str, message: Arc<M>)
-               -> BoxFuture<'static, Result<Arc<Result<M>>>> {
+    fn request(&self, topic: &str, message: Arc<M>)-> BoxFuture<'static, Result<Arc<Result<M>>>> {
 
         let routes = self.routes.clone();
         let topic = topic.to_string();
@@ -152,8 +149,7 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
     }
 
     // Subscribe for a message with an subscriber function
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
-                         -> Result<()> {
+    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>) -> Result<()> {
         let topic = topic.to_string();
         let routes = self.routes.clone();
 
