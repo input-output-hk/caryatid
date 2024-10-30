@@ -6,7 +6,7 @@ use lapin::{
     BasicProperties, Channel, Connection, ConnectionProperties,
 };
 use futures::StreamExt;
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, Context};
 use config::Config;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -109,8 +109,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                     QueueDeclareOptions { exclusive: true,
                                           ..Default::default() },
                     FieldTable::default())
-                .await
-                .expect("Can't create response queue");
+                .await.with_context(|| "Can't create response queue")?;
 
             // !todo Create correlation ID
             let correlation_id = "foo";
@@ -137,8 +136,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                     BasicConsumeOptions::default(),
                     FieldTable::default(),
                 )
-                .await
-                .expect("Failed to start consumer");
+                .await.with_context(|| "Failed to start consumer")?;
 
             // Wait for the response
             match consumer.next().await {
@@ -150,8 +148,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                     // Acknowledge the response
                     delivery
                         .ack(lapin::options::BasicAckOptions::default())
-                        .await
-                        .expect("Failed to acknowledge response");
+                        .await.with_context(|| "Failed to acknowledge response")?;
 
                     // Match the correlation_id
                     if response_corr_id == Some(correlation_id) {
@@ -183,19 +180,18 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
         topic: &str,
         subscriber: Arc<Subscriber<M>>,
     ) -> Result<()> {
+
+        // Clone over async boundary
         let connection = self.connection.clone();  // Clone the connection
-        let subscriber = Arc::new(subscriber); // Shared subscriber function
         let topic = topic.to_string();
         let exchange = self.exchange.clone();
 
         tokio::spawn(async move {
-
             // Create a new channel for this subscriber
             let channel = connection.lock()
                 .await
                 .create_channel()
-                .await
-                .expect("Failed to create channel");
+                .await.with_context(|| "Failed to create channel")?;
 
             // Declare the topic exchange
             // !todo - make singular for connection
@@ -206,15 +202,13 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                     ExchangeDeclareOptions::default(),
                     FieldTable::default(),
                 )
-                .await
-                .expect("Failed to declare exchange");
+                .await.with_context(|| "Failed to declare exchange")?;
 
             // Declare the queue
             let queue = channel
                 .queue_declare(&topic, QueueDeclareOptions::default(),
                                FieldTable::default())
-                .await
-                .expect("Failed to declare queue");
+                .await.with_context(|| "Failed to declare queue")?;
 
             // Bind the queue to the exchange with the specified pattern
             channel
@@ -225,8 +219,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                     QueueBindOptions::default(),
                     FieldTable::default(),
                 )
-                .await
-                .expect("Failed to bind queue");
+                .await.with_context(|| "Failed to bind queue")?;
 
             // Start consuming messages from the queue
             let mut consumer = channel
@@ -236,12 +229,11 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                     BasicConsumeOptions::default(),
                     FieldTable::default(),
                 )
-                .await
-                .expect("Failed to start consumer");
+                .await.with_context(|| "Failed to start consumer")?;
 
             // Process each message received
             while let Some(delivery) = consumer.next().await {
-                let delivery = delivery.expect("Error in consumer");
+                let delivery = delivery.with_context(|| "Error in consumer")?;
 
                 // Decode it
                 match serde_cbor::de::from_slice::<M>(&delivery.data) {
@@ -270,8 +262,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                                                     BasicProperties::default()
                                                         .with_correlation_id(corr_id.clone())
                                                 )
-                                                .await
-                                                .expect("Can't send response");
+                                                .await.with_context(|| "Can't send response")?;
                                         },
                                         Err(e) => {
                                             error!("Can't encode response message: {e}");
@@ -292,9 +283,10 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                 // forever
                 delivery
                     .ack(lapin::options::BasicAckOptions::default())
-                    .await
-                    .expect("Failed to acknowledge message");
+                    .await.with_context(|| "Failed to acknowledge message")?;
             }
+
+            Ok::<(), anyhow::Error>(())  // Inform Rust what ? should return
         });
 
         Ok(())
