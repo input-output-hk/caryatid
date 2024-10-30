@@ -5,7 +5,7 @@ use caryatid_sdk::{Context, Module, module};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
-use tracing::{debug};
+use tracing::{debug, error};
 use serde_json::json;
 use tokio::time::{interval_at, Duration, Instant};
 use std::time::SystemTime;
@@ -53,7 +53,8 @@ impl Clock {
                 debug!("Clock sending {:?}", message);
 
                 message_bus.publish("clock.tick", message)
-                    .await.expect("Failed to publish message");
+                    .await
+                    .unwrap_or_else(|e| error!("Failed to publish: {e}"));
 
                 number += 1;
             }

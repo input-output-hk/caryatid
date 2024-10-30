@@ -30,7 +30,18 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    let name = name.expect("Module name is required");
+    let name = match name {
+        Some(n) => n,
+        None => {
+            return syn::Error::new_spanned(
+                &struct_name,
+                "Module attribute 'name' is required"
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+
     let description = description.unwrap_or_else(
         || LitStr::new("No description provided", name.span()));
 

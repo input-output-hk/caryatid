@@ -156,7 +156,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
             // Wait for the response
             match consumer.next().await {
                 Some(delivery) => {
-                    let delivery = delivery.unwrap();
+                    let delivery = delivery.with_context(|| "Error in consumer")?;
                     let response_corr_id = delivery.properties.correlation_id()
                         .as_ref().map(|id| id.as_str());
 
