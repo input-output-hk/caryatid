@@ -33,7 +33,8 @@ impl<M: MessageBounds> RabbitMQBus<M> {
         info!("Connecting to RabbitMQ at {}", url);
 
         let connection = Connection::connect(&url, ConnectionProperties::default())
-            .await?;
+            .await
+            .with_context(|| "Can't create RabbitMQ connection")?;
 
         info!("RabbitMQ connected");
 
@@ -42,7 +43,21 @@ impl<M: MessageBounds> RabbitMQBus<M> {
             .unwrap_or("caryatid".to_string());
 
         // Create a channel for outgoing messages
-        let channel = connection.create_channel().await?;
+        let channel = connection
+            .create_channel()
+            .await
+            .with_context(|| "Can't create outgoing channel")?;
+
+        // Declare the topic exchange
+        channel
+            .exchange_declare(
+                &exchange_name,
+                lapin::ExchangeKind::Topic,
+                ExchangeDeclareOptions::default(),
+                FieldTable::default(),
+            )
+            .await
+            .with_context(|| "Failed to declare exchange")?;
 
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
@@ -192,17 +207,6 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                 .await
                 .create_channel()
                 .await.with_context(|| "Failed to create channel")?;
-
-            // Declare the topic exchange
-            // !todo - make singular for connection
-            channel
-                .exchange_declare(
-                    &exchange,
-                    lapin::ExchangeKind::Topic,
-                    ExchangeDeclareOptions::default(),
-                    FieldTable::default(),
-                )
-                .await.with_context(|| "Failed to declare exchange")?;
 
             // Declare the queue
             let queue = channel
