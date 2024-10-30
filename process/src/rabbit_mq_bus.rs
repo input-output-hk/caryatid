@@ -1,7 +1,7 @@
 //! MessageBus implementation for RabbitMQ
 use lapin::{
     options::{BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions,
-              QueueDeclareOptions, QueueBindOptions},
+              QueueBindOptions, QueueDeclareOptions},
     types::FieldTable,
     BasicProperties, Channel, Connection, ConnectionProperties,
 };
@@ -20,7 +20,7 @@ pub struct RabbitMQBus<M: MessageBounds> {
     connection: Arc<Mutex<Connection>>,  // RabbitMQ connection
     channel: Arc<Mutex<Channel>>,        // RabbitMQ outgoing channel
     exchange: String,                    // Exchange name
-    _phantom: PhantomData<M>,      // Required to associate with <M> (eww)
+    _phantom: PhantomData<M>,            // Required to associate with <M> (eww)
 }
 
 impl<M: MessageBounds> RabbitMQBus<M> {
@@ -32,10 +32,8 @@ impl<M: MessageBounds> RabbitMQBus<M> {
             .unwrap_or("amqp://127.0.0.1:5672/%2f".to_string());
         info!("Connecting to RabbitMQ at {}", url);
 
-        let connection =
-            Connection::connect(&url, ConnectionProperties::default())
-            .await
-            .expect("Failed to connect to RabbitMQ");
+        let connection = Connection::connect(&url, ConnectionProperties::default())
+            .await?;
 
         info!("RabbitMQ connected");
 
@@ -103,7 +101,8 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
             // Serialise the message
             let payload = serde_cbor::ser::to_vec(&*message)?;
 
-            // !!! Create a temporary response queue
+            // Create a temporary response queue
+            // !todo: Make this persistent
             let response_queue = channel
                 .queue_declare(
                     "",
@@ -113,7 +112,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                 .await
                 .expect("Can't create response queue");
 
-            // !!! Create correlation ID
+            // !todo Create correlation ID
             let correlation_id = "foo";
 
             // Publish the message to the queue
@@ -157,7 +156,9 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                     // Match the correlation_id
                     if response_corr_id == Some(correlation_id) {
                         match serde_cbor::de::from_slice::<M>(&delivery.data) {
+
                             Ok(message) => Ok(Arc::new(Ok(message))),
+
                             Err(e) => {
                                 error!("Invalid CBOR message received: {}", e);
                                 Err(anyhow!("Invalid CBOR received"))
@@ -197,7 +198,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                 .expect("Failed to create channel");
 
             // Declare the topic exchange
-
+            // !todo - make singular for connection
             channel
                 .exchange_declare(
                     &exchange,
@@ -241,6 +242,8 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
             // Process each message received
             while let Some(delivery) = consumer.next().await {
                 let delivery = delivery.expect("Error in consumer");
+
+                // Decode it
                 match serde_cbor::de::from_slice::<M>(&delivery.data) {
                     Ok(message) => {
                         // Call the subscriber function with the message
@@ -249,27 +252,38 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                         // Response required?
                         if let Some(reply_to) = delivery.properties.reply_to().as_ref() {
 
-                                // Send it back
-                                if let Ok(message) = result.as_ref() {
-                                    if let Some(corr_id) = delivery.properties.correlation_id() {
+                            // Send it back
+                            if let Ok(message) = result.as_ref() {
+                                if let Some(corr_id) = delivery.properties.correlation_id() {
 
-                                        let cbor = serde_cbor::ser::to_vec(message);
-                                        if let Ok(payload) = cbor {
+                                    // CBOR encode it
+                                    match serde_cbor::ser::to_vec(message) {
+                                        Ok(cbor) => {
+
+                                            // Publish it on reply channel
                                             channel
                                                 .basic_publish(
                                                     "",
                                                     reply_to.as_str(),
                                                     BasicPublishOptions::default(),
-                                                    &payload,
+                                                    &cbor,
                                                     BasicProperties::default()
                                                         .with_correlation_id(corr_id.clone())
                                                 )
                                                 .await
                                                 .expect("Can't send response");
+                                        },
+                                        Err(e) => {
+                                            error!("Can't encode response message: {e}");
                                         }
                                     }
+                                } else {
+                                    error!("No correlation ID supplied for reply");
                                 }
+                            } else {
+                                error!("Reply requested to {topic} but none returned");
                             }
+                        }
                     },
                     Err(e) => error!("Invalid CBOR message received: {}", e)
                 }
