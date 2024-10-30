@@ -20,6 +20,6 @@ workers = 10
 # Message routing
 [[message-router.route]]
 pattern = "#"
-bus = "internal"
+bus = "external"
 
 

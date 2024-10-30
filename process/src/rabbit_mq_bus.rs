@@ -6,7 +6,7 @@ use lapin::{
     BasicProperties, Channel, Connection, ConnectionProperties,
 };
 use futures::StreamExt;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use config::Config;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -92,8 +92,87 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
     /// Publish a message on a topic
     fn request(&self, topic: &str, message: Arc<M>)
                -> BoxFuture<'static, Result<Arc<Result<M>>>> {
+        let channel = self.channel.clone();
+        let message = Arc::clone(&message);
+        let topic = topic.to_string();
+        let exchange = self.exchange.clone();
+
         Box::pin(async move {
-            Ok(Arc::new(Ok(M::default())))  // !!! todo
+            let channel = channel.lock().await;
+
+            // Serialise the message
+            let payload = serde_cbor::ser::to_vec(&*message)?;
+
+            // !!! Create a temporary response queue
+            let response_queue = channel
+                .queue_declare(
+                    "",
+                    QueueDeclareOptions { exclusive: true,
+                                          ..Default::default() },
+                    FieldTable::default())
+                .await
+                .expect("Can't create response queue");
+
+            // !!! Create correlation ID
+            let correlation_id = "foo";
+
+            // Publish the message to the queue
+            channel
+                .basic_publish(
+                    &exchange,
+                    &topic,
+                    BasicPublishOptions::default(),
+                    &payload,
+                    BasicProperties::default()
+                        .with_reply_to(response_queue.name().clone())
+                        .with_correlation_id(correlation_id.into())
+                )
+                .await?
+                .await?;
+
+            // Set up consumer on the response queue
+            let mut consumer = channel
+                .basic_consume(
+                    response_queue.name().as_str(),
+                    "",
+                    BasicConsumeOptions::default(),
+                    FieldTable::default(),
+                )
+                .await
+                .expect("Failed to start consumer");
+
+            // Wait for the response
+            match consumer.next().await {
+                Some(delivery) => {
+                    let delivery = delivery.unwrap();
+                    let response_corr_id = delivery.properties.correlation_id()
+                        .as_ref().map(|id| id.as_str());
+
+                    // Acknowledge the response
+                    delivery
+                        .ack(lapin::options::BasicAckOptions::default())
+                        .await
+                        .expect("Failed to acknowledge response");
+
+                    // Match the correlation_id
+                    if response_corr_id == Some(correlation_id) {
+                        match serde_cbor::de::from_slice::<M>(&delivery.data) {
+                            Ok(message) => Ok(Arc::new(Ok(message))),
+                            Err(e) => {
+                                error!("Invalid CBOR message received: {}", e);
+                                Err(anyhow!("Invalid CBOR received"))
+                            }
+                        }
+                    } else {
+                        error!("Wrong correlation ID received");
+                        Err(anyhow!("Wrong correlation ID"))
+                    }
+                },
+                _ => {
+                    error!("Nothing returned from consumer");
+                    Err(anyhow!("No response"))
+                }
+            }
         })
     }
 
@@ -165,7 +244,32 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                 match serde_cbor::de::from_slice::<M>(&delivery.data) {
                     Ok(message) => {
                         // Call the subscriber function with the message
-                        subscriber(Arc::new(message)).await;
+                        let result = subscriber(Arc::new(message)).await;
+
+                        // Response required?
+                        if let Some(reply_to) = delivery.properties.reply_to().as_ref() {
+
+                                // Send it back
+                                if let Ok(message) = result.as_ref() {
+                                    if let Some(corr_id) = delivery.properties.correlation_id() {
+
+                                        let cbor = serde_cbor::ser::to_vec(message);
+                                        if let Ok(payload) = cbor {
+                                            channel
+                                                .basic_publish(
+                                                    "",
+                                                    reply_to.as_str(),
+                                                    BasicPublishOptions::default(),
+                                                    &payload,
+                                                    BasicProperties::default()
+                                                        .with_correlation_id(corr_id.clone())
+                                                )
+                                                .await
+                                                .expect("Can't send response");
+                                        }
+                                    }
+                                }
+                            }
                     },
                     Err(e) => error!("Invalid CBOR message received: {}", e)
                 }
