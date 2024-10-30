@@ -5,21 +5,28 @@ enabled = true
 topic = "performance.test"
 
 # Number of messages per thread
-count = 100000
+count = 1000000
 
 # Number of threads
-threads = 4
+threads = 1
 
 # Length of 'data' string
-length = 1000000
+length = 1000
 
 [perf-subscriber]
 enabled = true
 topic = "performance.test"
 
-#[message-bus.rabbit-mq]
+[message-bus.external]
+class = "rabbit-mq"
+url = "amqp://127.0.0.1:5672/%2f"
+exchange = "caryatid"
 
-[message-bus.in-memory]
-workers = 1
+[message-bus.internal]
+class = "in-memory"
+workers = 10
 
+[[message-router.route]]
+pattern = "#"
+bus = "internal"
 
