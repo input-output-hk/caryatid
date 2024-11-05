@@ -12,6 +12,7 @@ members = [
     "examples/simple",      # Sample process
     "examples/request",     # Request-response
     "examples/performance", # Performance test
+    "examples/typed",       # Typed message test
 ]
 
 resolver = "2"
