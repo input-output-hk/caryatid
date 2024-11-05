@@ -11,7 +11,7 @@ count = 1000000
 threads = 1
 
 # Length of 'data' string
-length = 1000
+length = 10000
 
 [perf-subscriber]
 enabled = true

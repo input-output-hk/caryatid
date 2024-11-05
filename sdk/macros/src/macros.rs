@@ -67,9 +67,9 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         // Register at startup (call this in main())
-        pub fn register() {
+        pub fn register(registry: &dyn caryatid_sdk::ModuleRegistry) {
             let module = Arc::new(#struct_name {});
-            caryatid_sdk::module_registry::register_module(module);
+            registry.register(module);
         }
 
         // Implement basic Debug for tracing

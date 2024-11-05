@@ -15,6 +15,9 @@ mod simple_publisher;
 // External modules
 extern crate clock;
 
+/// Standard message type
+type MType = serde_json::Value;
+
 /// Standard main
 #[tokio::main]
 pub async fn main() -> Result<()> {
@@ -32,12 +35,12 @@ pub async fn main() -> Result<()> {
         .unwrap());
 
     // Create the process
-    let process = Process::create(config).await;
+    let process = Process<MType>::create(config).await;
 
     // Register modules
-    simple_subscriber::register();
-    simple_publisher::register();
-    clock::register();
+    simple_subscriber::register(&process);
+    simple_publisher::register(&process);
+    clock::register(&process);
 
     // Run it
     process.run().await?;

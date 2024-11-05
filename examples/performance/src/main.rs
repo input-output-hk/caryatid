@@ -31,8 +31,8 @@ pub async fn main() -> Result<()> {
     let process = Process::create(config).await;
 
     // Register modules
-    perf_subscriber::register();
-    perf_publisher::register();
+    perf_subscriber::register(&process);
+    perf_publisher::register(&process);
 
     // Run it
     process.run().await?;
