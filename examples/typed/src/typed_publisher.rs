@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use tracing::{info};
+use serde_json::json;
 use crate::message::{Test, Message};
 
 /// Typed publisher module
@@ -29,20 +30,28 @@ impl TypedPublisher {
         // Let this run async
         tokio::spawn(async move {
 
+            // Custom struct
             let test_message_1 = Message::Test(Test {
                 data: "Hello, world!".to_string(),
                 number: 42
             });
-
             info!("Sending {:?}", test_message_1);
-
             message_bus.publish(&topic, Arc::new(test_message_1))
                 .await.expect("Failed to publish message");
 
+            // Simple string
             let test_message_2 = Message::String("Bye!".to_string());
             info!("Sending {:?}", test_message_2);
 
             message_bus.publish(&topic, Arc::new(test_message_2))
+                .await.expect("Failed to publish message");
+
+            // JSON
+            let test_message_3 = Message::JSON(json!({
+                "message": "Hello, world!",
+            }));
+            info!("Sending {:?}", test_message_3);
+            message_bus.publish(&topic, Arc::new(test_message_3))
                 .await.expect("Failed to publish message");
         });
 

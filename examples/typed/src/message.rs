@@ -8,9 +8,10 @@ pub struct Test {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Message {
-    None(()),
-    Test(Test),
-    String(String),
+    None(()),                 // Just so we have a simple default
+    Test(Test),               // A custom struct
+    String(String),           // Simple string
+    JSON(serde_json::Value),  // Get out of jail free card
 }
 
 impl Default for Message {
