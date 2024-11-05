@@ -8,8 +8,10 @@ pub type Subscriber<M> = dyn Fn(Arc<M>) ->
     BoxFuture<'static, Arc<Result<M>>> + Send + Sync + 'static;
 
 /// Message bounds trait (awaiting trait aliases)
-pub trait MessageBounds: Send + Sync + Clone + Default + 'static {}
-impl<T: Send + Sync + Clone + Default + 'static> MessageBounds for T {}
+pub trait MessageBounds: Send + Sync + Clone + Default +
+    serde::Serialize + serde::de::DeserializeOwned + 'static {}
+impl<T: Send + Sync + Clone + Default + serde::Serialize +
+     serde::de::DeserializeOwned + 'static> MessageBounds for T {}
 
 /// Generic MessageBus trait
 pub trait MessageBus<M: MessageBounds>: Send + Sync {

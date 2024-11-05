@@ -7,8 +7,12 @@ use tracing::info;
 use tokio::time::Instant;
 use tokio::sync::Mutex;
 
+/// Standard message type
+type MType = serde_json::Value;
+
 /// Performance test subscriber
 #[module(
+    message_type = "MType",
     name = "perf-subscriber",
     description = "Performance test subscriber"
 )]
@@ -22,7 +26,7 @@ struct Stats {
 
 impl PerfSubscriber {
 
-    fn init(&self, context: Arc<Context>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());

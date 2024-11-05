@@ -8,8 +8,12 @@ use serde_json::json;
 use tokio::time::{sleep, Duration};
 use futures::future::join_all;
 
+/// Standard message type
+type MType = serde_json::Value;
+
 /// Performance publisher module
 #[module(
+    message_type = "MType",
     name = "perf-publisher",
     description = "Performance test publisher module"
 )]
@@ -21,7 +25,7 @@ const DEFAULT_LENGTH: i64 = 100;
 
 impl PerfPublisher {
 
-    fn init(&self, context: Arc<Context>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());

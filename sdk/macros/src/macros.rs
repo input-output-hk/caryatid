@@ -14,6 +14,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     let parsed_attrs = parse_macro_input!(attr as syn::AttributeArgs);
     let mut name = None;
     let mut description = None;
+    let mut message_type = None;
 
     // Extract name and description from the attributes
     for meta in parsed_attrs {
@@ -25,6 +26,11 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             } else if meta_name_value.path.is_ident("description") {
                 if let syn::Lit::Str(lit) = meta_name_value.lit {
                     description = Some(lit);
+                }
+            } else if meta_name_value.path.is_ident("message_type") {
+                if let syn::Lit::Str(lit) = meta_name_value.lit {
+                    message_type = Some(syn::parse_str::<syn::Path>(&lit.value())
+                                        .expect("Bad message type"));
                 }
             }
         }
@@ -45,13 +51,26 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     let description = description.unwrap_or_else(
         || LitStr::new("No description provided", name.span()));
 
+    let message_type = match message_type {
+        Some(t) => t,
+        None => {
+            return syn::Error::new_spanned(
+                &struct_name,
+                "Module attribute 'message_type' is required"
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+
     let expanded = quote! {
         #input
 
-        impl Module for #struct_name {
+        impl Module<#message_type> for #struct_name {
 
             // Implement init, calling down to struct's own
-            fn init(&self, context: Arc<Context>, config: Arc<Config>) -> anyhow::Result<()> {
+            fn init(&self, context: Arc<Context<#message_type>>, config: Arc<Config>)
+                    -> anyhow::Result<()> {
                 #struct_name::init(self, context, config)
             }
 
@@ -67,7 +86,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         // Register at startup (call this in main())
-        pub fn register(registry: &dyn caryatid_sdk::ModuleRegistry) {
+        pub fn register(registry: &dyn caryatid_sdk::ModuleRegistry<#message_type>) {
             let module = Arc::new(#struct_name {});
             registry.register(module);
         }

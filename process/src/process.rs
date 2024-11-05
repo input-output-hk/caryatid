@@ -92,9 +92,9 @@ impl<M: MessageBounds> Process<M> {
     }
 
     /// Register a module
-    pub fn register(&self, module: Arc<dyn Module>) {
+    pub fn register(&self, module: Arc<dyn Module<M>>) {
         let name = module.get_name();
-        let config = Arc::new(get_sub_config(&config, name));
+        let config = Arc::new(get_sub_config(&self.config, name));
 
         // Only init if enabled
         match config.get_bool("enabled") {
@@ -126,10 +126,10 @@ impl<M: MessageBounds> Process<M> {
 }
 
 /// Module registry implementation
-impl ModuleRegistry for Process {
+impl<M: MessageBounds> ModuleRegistry<M> for Process<M> {
 
     /// Register a module
-    fn register(&self, module: Arc<dyn Module>) {
+    fn register(&self, module: Arc<dyn Module<M>>) {
         let name = module.get_name();
         let config = Arc::new(get_sub_config(&self.config, name));
 

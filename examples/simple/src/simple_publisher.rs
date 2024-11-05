@@ -6,9 +6,13 @@ use config::Config;
 use tracing::{info};
 use serde_json::json;
 
+/// Standard message type
+type MType = serde_json::Value;
+
 /// Simple publisher module
 // Define it as a module, with a name and description
 #[module(
+    message_type = "MType",
     name = "simple-publisher",
     description = "Simple publisher module"
 )]
@@ -18,7 +22,7 @@ impl SimplePublisher {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
-    fn init(&self, context: Arc<Context>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
 
         // Get configuration

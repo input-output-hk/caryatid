@@ -6,8 +6,12 @@ use config::Config;
 use tracing::{info};
 use serde_json::Value;
 
+/// Standard message type
+type MType = serde_json::Value;
+
 /// Responder module
 #[module(
+    message_type = "MType",
     name = "responder",
     description = "Example responder"
 )]
@@ -29,7 +33,7 @@ impl Responder {
         Arc::new(Ok(message))
     }
 
-    fn init(&self, context: Arc<Context>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
 
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating responder on '{}'", topic);

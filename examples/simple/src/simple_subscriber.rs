@@ -6,9 +6,14 @@ use config::Config;
 use tracing::{info};
 use chrono::{DateTime, Utc, Local};
 
+/// Standard message type
+type MType = serde_json::Value;
+
 /// Simple module
 // Define it as a module, with a name and description
+
 #[module(
+    message_type = "MType",
     name = "simple-subscriber",
     description = "Simple subscriber module"
 )]
@@ -18,7 +23,7 @@ impl SimpleSubscriber {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
-    fn init(&self, context: Arc<Context>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());

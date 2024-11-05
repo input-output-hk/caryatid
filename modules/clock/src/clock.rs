@@ -11,8 +11,12 @@ use tokio::time::{interval_at, Duration, Instant};
 use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 
+/// Standard message type
+type MType = serde_json::Value;
+
 /// Clock module
 #[module(
+    message_type = "MType",
     name = "clock",
     description = "System clock"
 )]
@@ -20,7 +24,7 @@ pub struct Clock;
 
 impl Clock {
 
-    fn init(&self, context: Arc<Context>, _config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, _config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
 
         tokio::spawn(async move {

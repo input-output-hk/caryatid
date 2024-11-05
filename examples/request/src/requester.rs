@@ -6,8 +6,12 @@ use config::Config;
 use tracing::{info, error};
 use serde_json::json;
 
+/// Standard message type
+type MType = serde_json::Value;
+
 /// Simple requester module
 #[module(
+    message_type = "MType",
     name = "requester",
     description = "Sample requester"
 )]
@@ -15,7 +19,7 @@ pub struct Requester;
 
 impl Requester {
 
-    fn init(&self, context: Arc<Context>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating requester on '{}'", topic);

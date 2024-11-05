@@ -35,7 +35,7 @@ pub async fn main() -> Result<()> {
         .unwrap());
 
     // Create the process
-    let process = Process<MType>::create(config).await;
+    let process = Process::<MType>::create(config).await;
 
     // Register modules
     simple_subscriber::register(&process);
