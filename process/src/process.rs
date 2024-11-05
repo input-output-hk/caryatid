@@ -1,13 +1,13 @@
 //! Main process for a Caryatid framework installation
 //! Loads and runs modules built with caryatid-sdk
 
-use caryatid_sdk::{Context, MessageBus};
+use caryatid_sdk::{Context, MessageBus, Module, ModuleRegistry};
 use caryatid_sdk::config::{get_sub_config, config_from_value};
 use anyhow::{Result, anyhow};
 use std::sync::Arc;
 use config::Config;
 use tokio::signal::unix::{signal, SignalKind};
-use tracing::{info, error};
+use tracing::{info, warn, error};
 
 mod in_memory_bus;
 use in_memory_bus::InMemoryBus;
@@ -58,7 +58,7 @@ impl Process {
     }
 
     /// Create a process with the given config
-    pub async fn create(config: Arc<Config>) -> Arc<Self> {
+    pub async fn create(config: Arc<Config>) -> Self {
 
         // Create bus registrations
         let mut buses: Vec<Arc<BusInfo<MType>>> = Vec::new();
@@ -91,17 +91,13 @@ impl Process {
         // Create the shared context
         let context = Arc::new(Context::new(config.clone(), routing_bus.clone()));
 
-        Arc::new(Self { config, context })
+        Self { config, context }
     }
 
     /// Run the process
     pub async fn run(&self) -> Result<()> {
 
         info!("Running");
-
-        // Create all the modules
-        caryatid_sdk::module_registry::initialise_modules(self.context.clone(),
-                                                          self.config.clone());
 
         // Wait for SIGTERM
         let mut sigterm = signal(SignalKind::terminate())
@@ -117,3 +113,21 @@ impl Process {
     }
 }
 
+/// Module registry implementation
+impl ModuleRegistry for Process {
+
+    /// Register a module
+    fn register(&self, module: Arc<dyn Module>) {
+        let name = module.get_name();
+        let config = Arc::new(get_sub_config(&self.config, name));
+
+        // Only init if enabled
+        match config.get_bool("enabled") {
+            Ok(true) => {
+                info!("Initialising {name}");
+                module.init(self.context.clone(), config.clone()).unwrap();
+            },
+            _ => warn!("Ignoring disabled module {name}"),
+        }
+    }
+}

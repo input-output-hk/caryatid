@@ -35,9 +35,9 @@ pub async fn main() -> Result<()> {
     let process = Process::create(config).await;
 
     // Register modules
-    simple_subscriber::register();
-    simple_publisher::register();
-    clock::register();
+    simple_subscriber::register(&process);
+    simple_publisher::register(&process);
+    clock::register(&process);
 
     // Run it
     process.run().await?;

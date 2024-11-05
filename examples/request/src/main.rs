@@ -32,8 +32,8 @@ pub async fn main() -> Result<()> {
     let process = Process::create(config).await;
 
     // Register modules
-    requester::register();
-    responder::register();
+    requester::register(&process);
+    responder::register(&process);
 
     // Run it
     process.run().await?;
