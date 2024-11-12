@@ -13,14 +13,10 @@ caryatid_process = { path = "../../process" }
 # SDK to construct our own modules
 caryatid_sdk = { path = "../../sdk" }
 
-# External modules
-clock = { path = "../../modules/clock" }
-
 anyhow = "1.0"
 config = "0.14.0"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1.0.132"
-chrono = "0.4.38"
 

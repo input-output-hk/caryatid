@@ -13,7 +13,7 @@ type MType = serde_json::Value;
 
 /// Performance publisher module
 #[module(
-    message_type = "MType",
+    message_type(MType),
     name = "perf-publisher",
     description = "Performance test publisher module"
 )]

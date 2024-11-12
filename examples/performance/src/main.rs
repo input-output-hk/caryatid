@@ -9,7 +9,10 @@ use std::sync::Arc;
 
 // Modules in the same crate
 mod perf_subscriber;
+use perf_subscriber::PerfSubscriber;
+
 mod perf_publisher;
+use perf_publisher::PerfPublisher;
 
 /// Standard main
 #[tokio::main]
@@ -31,8 +34,8 @@ pub async fn main() -> Result<()> {
     let process = Process::create(config).await;
 
     // Register modules
-    perf_subscriber::register(&process);
-    perf_publisher::register(&process);
+    PerfSubscriber::register(&process);
+    PerfPublisher::register(&process);
 
     // Run it
     process.run().await?;

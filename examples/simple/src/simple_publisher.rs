@@ -12,7 +12,7 @@ type MType = serde_json::Value;
 /// Simple publisher module
 // Define it as a module, with a name and description
 #[module(
-    message_type = "MType",
+    message_type(MType),
     name = "simple-publisher",
     description = "Simple publisher module"
 )]

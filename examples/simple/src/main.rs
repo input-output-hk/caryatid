@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 // Modules in the same crate
 mod simple_subscriber;
-mod simple_publisher;
+use simple_subscriber::SimpleSubscriber;
 
-// External modules
-extern crate clock;
+mod simple_publisher;
+use simple_publisher::SimplePublisher;
 
 /// Standard message type
 type MType = serde_json::Value;
@@ -38,9 +38,8 @@ pub async fn main() -> Result<()> {
     let process = Process::<MType>::create(config).await;
 
     // Register modules
-    simple_subscriber::register(&process);
-    simple_publisher::register(&process);
-    clock::register(&process);
+    SimpleSubscriber::register(&process);
+    SimplePublisher::register(&process);
 
     // Run it
     process.run().await?;

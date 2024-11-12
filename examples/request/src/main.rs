@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 // Modules in the same crate
 mod requester;
+use requester::Requester;
 mod responder;
+use responder::Responder;
 
 /// Standard main
 #[tokio::main]
@@ -32,8 +34,8 @@ pub async fn main() -> Result<()> {
     let process = Process::create(config).await;
 
     // Register modules
-    requester::register(&process);
-    responder::register(&process);
+    Requester::register(&process);
+    Responder::register(&process);
 
     // Run it
     process.run().await?;

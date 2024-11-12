@@ -1,30 +1,28 @@
 //! Caryatid Clock module
 //! Generates regular clock.tick events
 
-use caryatid_sdk::{Context, Module, module};
+use caryatid_sdk::{Context, Module, module, MessageBounds};
+use caryatid_sdk::messages::ClockTickMessage;
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use tracing::{debug, error};
-use serde_json::json;
 use tokio::time::{interval_at, Duration, Instant};
 use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 
-/// Standard message type
-type MType = serde_json::Value;
-
 /// Clock module
+/// Parameterised by the outer message enum used on the bus
 #[module(
-    message_type = "MType",
+    message_type(M),
     name = "clock",
     description = "System clock"
 )]
-pub struct Clock;
+pub struct Clock<M: From<ClockTickMessage> + MessageBounds>;
 
-impl Clock {
-
-    fn init(&self, context: Arc<Context<MType>>, _config: Arc<Config>) -> Result<()> {
+impl<M: From<ClockTickMessage> + MessageBounds> Clock<M>
+{
+    fn init(&self, context: Arc<Context<M>>, _config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
 
         tokio::spawn(async move {
@@ -46,17 +44,16 @@ impl Clock {
                 let datetime: DateTime<Utc> =
                     DateTime::<Utc>::from(wall_clock);
 
-                // Get ISO timestamp
-                let iso = datetime.to_rfc3339();
-
-                let message = Arc::new(json!({
-                    "time": iso,
-                    "number": number
-                }));
+                // Construct message
+                let message = ClockTickMessage {
+                    time: datetime,
+                    number: number
+                };
 
                 debug!("Clock sending {:?}", message);
 
-                message_bus.publish("clock.tick", message)
+                let message_enum: M = message.into();  // 'Promote' to outer enum
+                message_bus.publish("clock.tick", Arc::new(message_enum))
                     .await
                     .unwrap_or_else(|e| error!("Failed to publish: {e}"));
 

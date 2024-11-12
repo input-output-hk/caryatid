@@ -12,7 +12,7 @@ type MType = serde_json::Value;
 
 /// Performance test subscriber
 #[module(
-    message_type = "MType",
+    message_type(MType),
     name = "perf-subscriber",
     description = "Performance test subscriber"
 )]

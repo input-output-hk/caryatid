@@ -11,8 +11,16 @@ use crate::message::Message;
 
 // Modules in the same crate
 mod typed_subscriber;
+use typed_subscriber::TypedSubscriber;
+
 mod typed_publisher;
+use typed_publisher::TypedPublisher;
+
 mod message;
+
+// External modules
+extern crate clock;
+use clock::Clock;
 
 /// Standard main
 #[tokio::main]
@@ -34,8 +42,9 @@ pub async fn main() -> Result<()> {
     let process = Process::<Message>::create(config).await;
 
     // Register modules
-    typed_subscriber::register(&process);
-    typed_publisher::register(&process);
+    TypedSubscriber::register(&process);
+    TypedPublisher::register(&process);
+    Clock::<Message>::register(&process);
 
     // Run it
     process.run().await?;

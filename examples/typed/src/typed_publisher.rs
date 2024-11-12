@@ -9,7 +9,7 @@ use crate::message::{Test, Message};
 
 /// Typed publisher module
 #[module(
-    message_type = "Message",
+    message_type(Message),
     name = "typed-publisher",
     description = "Typed publisher module"
 )]

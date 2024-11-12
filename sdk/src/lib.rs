@@ -4,6 +4,7 @@ pub mod context;
 pub mod module;
 pub mod module_registry;
 pub mod config;
+pub mod messages;
 
 // Flattened re-exports
 pub use caryatid_macros::module;

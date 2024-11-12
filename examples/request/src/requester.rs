@@ -11,7 +11,7 @@ type MType = serde_json::Value;
 
 /// Simple requester module
 #[module(
-    message_type = "MType",
+    message_type(MType),
     name = "requester",
     description = "Sample requester"
 )]
