@@ -103,8 +103,10 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Macro expansion
     let expanded = quote! {
+        // Struct definition - possibly modified
         #input
 
+        // Implement Module init etc.
         impl #impl_generics Module<#message_type> for #struct_name #type_generics #where_clause {
 
             // Implement init, calling down to struct's own
@@ -124,7 +126,9 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
 
+        // Provide a register() function
         impl #impl_generics #struct_name #type_generics #where_clause {
+
             // Register at startup (call this in main())
             pub fn register(registry: &dyn caryatid_sdk::ModuleRegistry<#message_type>) {
                 let module = Arc::new(#struct_name {

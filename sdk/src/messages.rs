@@ -14,3 +14,35 @@ pub struct ClockTickMessage {
     /// Tick number
     pub number: u64
 }
+
+/// REST request message
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RESTRequest {
+
+    // HTTP method: GET, POST etc.
+    pub method: String,
+
+    // URL path: /foo
+    pub path: String,
+
+    // Request body (if any)
+    pub body: String
+}
+
+/// REST response message
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RESTResponse {
+
+    // HTTP response code
+    pub code: u16,
+
+    // HTTP status
+    pub status: String,
+
+    // Response body
+    pub body: String
+}
+
+pub trait GetRESTResponse {
+    fn get_rest_response(&self) -> Option<RESTResponse>;
+}

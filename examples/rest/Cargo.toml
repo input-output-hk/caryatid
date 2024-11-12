@@ -1,0 +1,28 @@
+# Simple rest server example Caryatid process
+[package]
+name = "rest_example"
+version = "0.1.0"
+edition = "2021"
+authors = ["Paul Clark <paul.clark@iohk.io>"]
+description = "REST server example Caryatid process"
+
+[dependencies]
+# Process to construct main
+caryatid_process = { path = "../../process" }
+
+# SDK to construct our own modules
+caryatid_sdk = { path = "../../sdk" }
+
+# External modules
+rest_server = { path = "../../modules/rest_server" }
+
+anyhow = "1.0"
+config = "0.14.0"
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0.214", features = ["derive"] }
+serde_json = "1.0.132"
+chrono = "0.4.38"
+hyper = "1.5.0"
+

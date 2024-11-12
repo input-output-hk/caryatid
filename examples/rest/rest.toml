@@ -1,0 +1,18 @@
+# Top-level configuration for Caryatid process - REST Hello, World! version
+
+[rest-server]
+enabled = true
+
+[rest-hello-world]
+enabled = true
+topic = "rest.get.hello"
+
+[message-bus.internal]
+class = "in-memory"
+workers = 10
+
+# Message routing
+[[message-router.route]]  # Everything goes to internal
+pattern = "#"
+bus = [ "internal" ]
+

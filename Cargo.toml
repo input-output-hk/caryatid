@@ -2,17 +2,19 @@
 
 [workspace]
 members = [
-    "sdk",                # The SDK library for modules
-    "process",            # Library for processes
+    "sdk",                  # The SDK library for modules
+    "process",              # Library for processes
 
     # Core modules
-    "modules/clock",      # System clock
+    "modules/clock",        # System clock
+    "modules/rest_server",  # REST server
 
     # Examples
     "examples/simple",      # Sample process
     "examples/request",     # Request-response
     "examples/performance", # Performance test
     "examples/typed",       # Typed message test
+    "examples/rest",        # REST server test
 ]
 
 resolver = "2"
