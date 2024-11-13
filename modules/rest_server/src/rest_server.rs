@@ -13,12 +13,18 @@ use axum::{
     http::{Request, StatusCode},
     response::Response,
     Router,
-    routing::any,
 };
 use hyper::body;
 
-use std::net::SocketAddr;
+use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 use std::convert::Infallible;
+
+/// Default IP address and port to listen on
+const DEFAULT_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+const DEFAULT_PORT: u16 = 4340;
+
+/// Maximum length of body to log
+const MAX_LOG: usize = 40;
 
 /// REST module
 /// Parameterised by the outer message enum used on the bus
@@ -33,7 +39,6 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
 {
     fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
-        let topic = "rest.get.hello".to_string(); // !!! Construct from request !!!
 
         // Generic request handler
         let handle_request = |req: Request<Body>| async move {
@@ -42,19 +47,44 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
 
             let method = req.method().as_str().to_string();
             let path = req.uri().path().to_string();
-            let bytes = body::to_bytes(req.into_body()).await.unwrap(); // !!! Handle
-            let body = String::from_utf8(bytes.to_vec())
-                .expect("request body should be valid UTF-8"); // !!! Handle 
 
+            let bytes = match body::to_bytes(req.into_body()).await {
+                Ok(b) => b,
+                Err(e) => return Ok(Response::builder()
+                                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                    .body(e.to_string())
+                                    .unwrap())
+            };
+
+            let body = match String::from_utf8(bytes.to_vec()) {
+                Ok(b) => b,
+                Err(e) => return Ok(Response::builder()
+                                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                    .body(e.to_string())
+                                    .unwrap())
+            };
+
+            // Construct topic, turning / to . and remove leading /
+            let method_lower = method.to_lowercase();
+            let dot_path = path.strip_prefix("/")
+                .unwrap_or(&path)
+                .replace('/', ".");
+            let topic = format!("rest.{method_lower}.{dot_path}");
+            info!("Sending to topic {}", topic);
+
+            // Construct message
             let message = RESTRequest { method, path, body };
-            info!("Sending {:?}", message);
 
             let response = match message_bus.request(&topic, Arc::new(message.into())).await {
                 Ok(result) => {
                     match result.as_ref() {
                         Ok(response) => match response.get_rest_response() {
-                            Some(RESTResponse { code, status, body }) => {
-                                info!("Got response: {code} {status}");
+                            Some(RESTResponse { code, body }) => {
+
+                                info!("Got response: {code} {}{}",
+                                      &body[..std::cmp::min(body.len(), MAX_LOG)],
+                                      if body.len()>MAX_LOG {"..."} else {""});
+
                                 Response::builder()
                                     .status(StatusCode::from_u16(code)
                                             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
@@ -65,7 +95,7 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
                                 error!("Response isn't RESTResponse");
                                 Response::builder()
                                     .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                    .body("Internal server error".to_string())
+                                    .body("".to_string())
                                     .unwrap()
                             }
                         },
@@ -79,11 +109,11 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
                         }
                     }
                 },
-                Err(e) => {
-                    error!("Request failed: {e}");
+                Err(_) => {
+                    error!("No handler for {topic}");
                     Response::builder()
                         .status(StatusCode::NOT_FOUND)
-                        .body(e.to_string())
+                        .body("".to_string())
                         .unwrap()
                 }
             };
@@ -93,13 +123,15 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
 
         tokio::spawn(async move {
 
-            // Define the address to bind the server to !!! config
-            let addr = SocketAddr::from(([127, 0, 0, 1], 3120));
+            // Define the address to bind the server to
+            let ip = config.get::<IpAddr>("address").unwrap_or(DEFAULT_IP);
+            let port: u16 = config.get::<u16>("port").unwrap_or(DEFAULT_PORT);
+            let addr = SocketAddr::from((ip, port));
             info!("REST server listening on http://{}", addr);
 
             // Create an 'app' - actually we handle all the routing, we just use axum to
             // sugar over hyper
-            let app = Router::new().route("/", any(handle_request));
+            let app = Router::new().fallback(handle_request);
 
             // Run it
             axum::Server::bind(&addr)

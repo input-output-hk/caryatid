@@ -1,10 +1,12 @@
 //! REST server Caraytid module - simple /hello responder
 use caryatid_sdk::{Context, MessageBusExt, Module, module};
+use caryatid_sdk::messages::RESTResponse;
 use std::sync::Arc;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use config::Config;
 use tracing::{info, error};
 use crate::message::Message;
+use futures::future;
 
 /// Typed subscriber module
 #[module(
@@ -21,12 +23,22 @@ impl RESTHelloWorld {
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating REST Hello, world! responder on '{}'", topic);
 
-        context.message_bus.subscribe(&topic, |message: Arc<Message>| {
+        context.message_bus.handle(&topic, |message: Arc<Message>| {
             match message.as_ref()
             {
-                Message::RESTRequest(request) =>
-                    info!("REST hello world received {} {}", request.method, request.path),
-                _ => error!("Unexpected message type")
+                Message::RESTRequest(request) => {
+                    info!("REST hello world received {} {}", request.method, request.path);
+                    let response: Message = Message::RESTResponse(RESTResponse {
+                        code: 200,
+                        body: "Hello, world!".to_string()
+                    });
+
+                    future::ready(Arc::new(Ok(response)))
+                }
+                _ => {
+                    error!("Unexpected message type");
+                    future::ready(Arc::new(Err(anyhow!("Unexpected message type"))))
+                }
             }
         })?;
 

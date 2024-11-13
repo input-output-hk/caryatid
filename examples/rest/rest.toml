@@ -2,6 +2,8 @@
 
 [rest-server]
 enabled = true
+address = "127.0.0.1"
+port = 4340
 
 [rest-hello-world]
 enabled = true
