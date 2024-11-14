@@ -31,11 +31,11 @@ pub async fn main() -> Result<()> {
         .unwrap());
 
     // Create the process
-    let process = Process::create(config).await;
+    let mut process = Process::create(config).await;
 
     // Register modules
-    Requester::register(&process);
-    Responder::register(&process);
+    Requester::register(&mut process);
+    Responder::register(&mut process);
 
     // Run it
     process.run().await?;

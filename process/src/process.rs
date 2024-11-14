@@ -5,6 +5,7 @@ use caryatid_sdk::{Context, MessageBus, Module, MessageBounds, ModuleRegistry};
 use caryatid_sdk::config::{get_sub_config, config_from_value};
 use anyhow::{Result, anyhow};
 use std::sync::Arc;
+use std::collections::HashMap;
 use config::Config;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{info, warn, error};
@@ -22,8 +23,14 @@ mod match_topic;
 
 /// Main Process structure
 pub struct Process<M: MessageBounds> {
+    /// Global configuration
     config: Arc<Config>,
+
+    /// Global context
     context: Arc<Context<M>>,
+
+    /// Active modules by name
+    modules: HashMap<String, Arc<dyn Module<M>>>,
 }
 
 impl<M: MessageBounds> Process<M> {
@@ -88,28 +95,39 @@ impl<M: MessageBounds> Process<M> {
         // Create the shared context
         let context = Arc::new(Context::new(config.clone(), routing_bus.clone()));
 
-        Self { config, context }
-    }
-
-    /// Register a module
-    pub fn register(&self, module: Arc<dyn Module<M>>) {
-        let name = module.get_name();
-        let config = Arc::new(get_sub_config(&self.config, name));
-
-        // Only init if enabled
-        match config.get_bool("enabled") {
-            Ok(true) => {
-                info!("Initialising {name}");
-                module.init(self.context.clone(), config.clone()).unwrap();
-            },
-            _ => warn!("Ignoring disabled module {name}"),
-        }
+        Self { config, context, modules: HashMap::new() }
     }
 
     /// Run the process
     pub async fn run(&self) -> Result<()> {
 
-        info!("Running");
+        info!("Initialising...");
+
+        // Initialise all the modules from [module.<id>] configuration
+        if let Ok(mod_confs) = self.config.get_table("module") {
+            for (id, mod_conf) in mod_confs {
+                if let Ok(modt) = mod_conf.into_table() {
+                    let modc = config_from_value(modt);
+                    let mut module_name = id.clone();  // Default
+                    if let Ok(class) = modc.get_string("class") {
+                        module_name = class;
+                    }
+
+                    // Look up the module
+                    if let Some(module) = self.modules.get(&module_name) {
+                        info!("Initialising module {id}");
+                        module.init(self.context.clone(), Arc::new(modc)).unwrap();
+                    }
+                    else {
+                        error!("Unrecognised module class: {module_name} in [module.{id}]");
+                    }
+                } else {
+                    warn!("Bad configuration for module {id} ignored");
+                }
+            }
+        }
+
+        info!("Running...");
 
         // Wait for SIGTERM
         let mut sigterm = signal(SignalKind::terminate())
@@ -129,17 +147,8 @@ impl<M: MessageBounds> Process<M> {
 impl<M: MessageBounds> ModuleRegistry<M> for Process<M> {
 
     /// Register a module
-    fn register(&self, module: Arc<dyn Module<M>>) {
+    fn register(&mut self, module: Arc<dyn Module<M>>) {
         let name = module.get_name();
-        let config = Arc::new(get_sub_config(&self.config, name));
-
-        // Only init if enabled
-        match config.get_bool("enabled") {
-            Ok(true) => {
-                info!("Initialising {name}");
-                module.init(self.context.clone(), config.clone()).unwrap();
-            },
-            _ => warn!("Ignoring disabled module {name}"),
-        }
+        self.modules.insert(name.to_string(), module.clone());
     }
 }

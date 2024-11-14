@@ -35,11 +35,11 @@ pub async fn main() -> Result<()> {
         .unwrap());
 
     // Create the process
-    let process = Process::<MType>::create(config).await;
+    let mut process = Process::<MType>::create(config).await;
 
     // Register modules
-    SimpleSubscriber::register(&process);
-    SimplePublisher::register(&process);
+    SimpleSubscriber::register(&mut process);
+    SimplePublisher::register(&mut process);
 
     // Run it
     process.run().await?;

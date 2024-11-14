@@ -36,11 +36,11 @@ pub async fn main() -> Result<()> {
         .unwrap());
 
     // Create the process
-    let process = Process::<Message>::create(config).await;
+    let mut process = Process::<Message>::create(config).await;
 
     // Register modules
-    RESTServer::<Message>::register(&process);
-    RESTHelloWorld::register(&process);
+    RESTServer::<Message>::register(&mut process);
+    RESTHelloWorld::register(&mut process);
 
     // Run it
     process.run().await?;

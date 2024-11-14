@@ -130,7 +130,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl #impl_generics #struct_name #type_generics #where_clause {
 
             // Register at startup (call this in main())
-            pub fn register(registry: &dyn caryatid_sdk::ModuleRegistry<#message_type>) {
+            pub fn register(registry: &mut dyn caryatid_sdk::ModuleRegistry<#message_type>) {
                 let module = Arc::new(#struct_name {
                     #marker
                 });

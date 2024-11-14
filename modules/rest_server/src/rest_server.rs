@@ -40,6 +40,9 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
     fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
 
+        // Get topic prefix from config
+        let topic_prefix = config.get_string("topic").unwrap_or("rest".to_string());
+
         // Generic request handler
         let handle_request = |req: Request<Body>| async move {
             info!("Received REST request {} {}",
@@ -69,7 +72,7 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
             let dot_path = path.strip_prefix("/")
                 .unwrap_or(&path)
                 .replace('/', ".");
-            let topic = format!("rest.{method_lower}.{dot_path}");
+            let topic = format!("{topic_prefix}.{method_lower}.{dot_path}");
             info!("Sending to topic {}", topic);
 
             // Construct message

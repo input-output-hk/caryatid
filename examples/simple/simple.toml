@@ -1,11 +1,9 @@
 # Top-level configuration for Caryatid process
 
-[simple-subscriber]
-enabled = true
+[module.simple-subscriber]
 topic = "sample.#"
 
-[simple-publisher]
-enabled = true
+[module.simple-publisher]
 topic = "sample.test"
 
 [message-bus.external]

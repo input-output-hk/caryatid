@@ -8,5 +8,5 @@ use std::sync::Arc;
 pub trait ModuleRegistry<M: MessageBounds> {
 
     // Register a module
-    fn register(&self, module: Arc<dyn Module<M>>);
+    fn register(&mut self, module: Arc<dyn Module<M>>);
 }

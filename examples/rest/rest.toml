@@ -1,13 +1,20 @@
 # Top-level configuration for Caryatid process - REST Hello, World! version
 
-[rest-server]
-enabled = true
+[module.rest-server]
 address = "127.0.0.1"
 port = 4340
 
-[rest-hello-world]
-enabled = true
+[module.rest-server-2]
+class = "rest-server"
+topic = "rest2"
+port = 4341
+
+[module.rest-hello-world]
 topic = "rest.get.hello"
+
+[module.rest-hello-world-2]
+class = "rest-hello-world"
+topic = "rest2.get.hello2"
 
 [message-bus.internal]
 class = "in-memory"

@@ -31,11 +31,11 @@ pub async fn main() -> Result<()> {
         .unwrap());
 
     // Create the process
-    let process = Process::create(config).await;
+    let mut process = Process::create(config).await;
 
     // Register modules
-    PerfSubscriber::register(&process);
-    PerfPublisher::register(&process);
+    PerfSubscriber::register(&mut process);
+    PerfPublisher::register(&mut process);
 
     // Run it
     process.run().await?;

@@ -1,15 +1,12 @@
 # Top-level configuration for Caryatid process
 
-[typed-subscriber]
-enabled = true
+[module.typed-subscriber]
 topic = "sample.#"
 
-[typed-publisher]
-enabled = true
+[module.typed-publisher]
 topic = "sample.test"
 
-[clock]
-enabled = true
+[module.clock]
 
 [message-bus.external]
 class = "rabbit-mq"

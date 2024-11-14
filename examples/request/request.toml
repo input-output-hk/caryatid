@@ -1,11 +1,9 @@
 # Top-level configuration for request/response example Caryatid process
 
-[requester]
-enabled = true
+[module.requester]
 topic = "test.request"
 
-[responder]
-enabled = true
+[module.responder]
 topic = "test.request"
 
 [message-bus.external]
