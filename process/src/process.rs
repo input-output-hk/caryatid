@@ -19,6 +19,9 @@ use rabbit_mq_bus::RabbitMQBus;
 mod routing_bus;
 use routing_bus::{RoutingBus, BusInfo};
 
+mod correlation_bus;
+use correlation_bus::CorrelationBus;
+
 mod match_topic;
 
 /// Main Process structure
@@ -92,8 +95,13 @@ impl<M: MessageBounds> Process<M> {
             &get_sub_config(&config, "message-router"),
             Arc::new(buses)));
 
+        // Create correlation wrapper
+        let correlation_bus = Arc::new(CorrelationBus::<M>::new(
+            &get_sub_config(&config, "message-correlator"),
+            routing_bus.clone()));
+
         // Create the shared context
-        let context = Arc::new(Context::new(config.clone(), routing_bus.clone()));
+        let context = Arc::new(Context::new(config.clone(), correlation_bus.clone()));
 
         Self { config, context, modules: HashMap::new() }
     }
