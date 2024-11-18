@@ -33,11 +33,11 @@ impl RESTHelloWorld {
                         body: "Hello, world!".to_string()
                     });
 
-                    future::ready(Arc::new(Ok(response)))
+                    future::ready(Ok(Arc::new(response)))
                 }
                 _ => {
                     error!("Unexpected message type");
-                    future::ready(Arc::new(Err(anyhow!("Unexpected message type"))))
+                    future::ready(Err(anyhow!("Unexpected message type")))
                 }
             }
         })?;

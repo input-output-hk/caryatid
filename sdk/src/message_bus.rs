@@ -1,11 +1,11 @@
 //! Generic MessageBus trait for any pub-sub bus
-use futures::future::{BoxFuture, FutureExt, Future};
-use anyhow::Result;
+use futures::future::{BoxFuture, Future, ready};
+use anyhow::{Result, anyhow};
 use std::sync::Arc;
 
-/// Subscriber pattern function types
-pub type Subscriber<M> = dyn Fn(Arc<M>) ->
-    BoxFuture<'static, Arc<Result<M>>> + Send + Sync + 'static;
+/// Subscriber pattern function types - takes topic and message
+pub type Subscriber<M> = dyn Fn(&str, Arc<M>) ->
+    BoxFuture<'static, ()> + Send + Sync + 'static;
 
 /// Message bounds trait (awaiting trait aliases)
 pub trait MessageBounds: Send + Sync + Clone + Default +
@@ -21,8 +21,11 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
     fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, anyhow::Result<()>>;
 
     /// Request/response - as publish() but returns a result
-    fn request(&self, topic: &str, message: Arc<M>)
-               -> BoxFuture<'static, anyhow::Result<Arc<Result<M>>>>;
+    /// Note only implemented in CorrelationBus
+    fn request(&self, _topic: &str, _message: Arc<M>)
+               -> BoxFuture<'static, anyhow::Result<Arc<M>>> {
+       Box::pin(ready(Err(anyhow!("Not implemented"))))
+    }
 
     /// Register an subscriber function - note sync
     fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>) -> Result<()>;
@@ -44,8 +47,8 @@ pub trait MessageBusExt<M: MessageBounds> {
     /// the result
     fn handle<F, Fut>(&self, topic: &str, subscriber: F) -> Result<()>
     where
-        F: Fn(Arc<M>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Arc<Result<M>>> + Send + 'static;
+        F: Fn(Arc<M>) -> Fut + Send + Sync + Clone + 'static,
+        Fut: Future<Output = Result<Arc<M>>> + Send + 'static;
 }
 
 impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
@@ -55,10 +58,9 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
         F: Fn(Arc<M>) + Send + Sync + 'static
     {
         let arc_subscriber: Arc<Subscriber<M>> =
-            Arc::new(move |message: Arc<M>| {
+            Arc::new(move |_topic: &str, message: Arc<M>| {
                 subscriber(message);
-
-                async move { Arc::new(Ok(M::default())) }.boxed()
+                Box::pin(ready(()))
             });
 
         self.register_subscriber(topic, arc_subscriber)
@@ -66,16 +68,38 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
 
     fn handle<F, Fut>(&self, topic: &str, handler: F) -> Result<()>
     where
-        F: Fn(Arc<M>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Arc<Result<M>>> + Send + 'static,
+        F: Fn(Arc<M>) -> Fut + Send + Sync + Clone + 'static,
+        Fut: Future<Output = Result<Arc<M>>> + Send + 'static,
     {
+        let arc_self = self.clone();
         let arc_subscriber: Arc<Subscriber<M>> =
-            Arc::new(move |message: Arc<M>| {
-                handler(message).boxed()
+            Arc::new(move |topic, message: Arc<M>| {
+
+                let arc_self = arc_self.clone();
+                let handler = handler.clone();
+                let response_topic = topic.to_owned() + ".response";
+
+                tokio::spawn(async move {
+                    match handler(message).await.as_ref() {
+                        Ok(response) => {
+                            // Return the result with response topic
+                            let _ = arc_self.publish(&response_topic, response.clone()).await;
+                        },
+                        Err(e) => {
+                            // Return an error response
+                            // !!! How can we reliably create an error message?
+                            // !!! Needs a trait in MessageBounds which ensures M::error()
+                            arc_self.publish(&response_topic, Arc::new(M::default())).await;
+                        }
+                    }
+                });
+
+                Box::pin(ready(()))
             });
 
-        self.register_subscriber(topic, arc_subscriber)
+        // Subscribe for all request IDs in this topic
+        let request_pattern = format!("{topic}.*");
+        self.register_subscriber(&request_pattern, arc_subscriber)
     }
-
 }
 

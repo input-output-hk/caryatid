@@ -79,37 +79,25 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
             let message = RESTRequest { method, path, body };
 
             let response = match message_bus.request(&topic, Arc::new(message.into())).await {
-                Ok(result) => {
-                    match result.as_ref() {
-                        Ok(response) => match response.get_rest_response() {
-                            Some(RESTResponse { code, body }) => {
+                Ok(response) => match response.get_rest_response() {
+                    Some(RESTResponse { code, body }) => {
 
-                                info!("Got response: {code} {}{}",
-                                      &body[..std::cmp::min(body.len(), MAX_LOG)],
-                                      if body.len()>MAX_LOG {"..."} else {""});
+                        info!("Got response: {code} {}{}",
+                              &body[..std::cmp::min(body.len(), MAX_LOG)],
+                              if body.len()>MAX_LOG {"..."} else {""});
 
-                                Response::builder()
-                                    .status(StatusCode::from_u16(code)
-                                            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
-                                    .body(body)
-                                    .unwrap()
-                            },
-                            _ => {
-                                error!("Response isn't RESTResponse");
-                                Response::builder()
-                                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                    .body("".to_string())
-                                    .unwrap()
-                            }
-                        },
-
-                        Err(e) => {
-                            error!("Request failed: {e}");
-                            Response::builder()
-                                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                .body(e.to_string())
-                                .unwrap()
-                        }
+                        Response::builder()
+                            .status(StatusCode::from_u16(code)
+                                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
+                            .body(body)
+                            .unwrap()
+                    },
+                    _ => {
+                        error!("Response isn't RESTResponse");
+                        Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .body("".to_string())
+                            .unwrap()
                     }
                 },
                 Err(_) => {

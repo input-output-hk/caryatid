@@ -1,7 +1,7 @@
 //! Message super-bus which routes to other MessageBuses
 use tokio::sync::Mutex;
 use std::sync::Arc;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use config::Config;
 use futures::future::BoxFuture;
 use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
@@ -117,34 +117,6 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
                 }
             }
             Ok(())
-        })
-    }
-
-    /// Request a response on a given topic
-    fn request(&self, topic: &str, message: Arc<M>)-> BoxFuture<'static, Result<Arc<Result<M>>>> {
-
-        let routes = self.routes.clone();
-        let topic = topic.to_string();
-
-        Box::pin(async move {
-
-            let routes = routes.lock().await;
-            let topic = topic.clone();
-            let mut result = Err(anyhow!("No handlers for request '{topic}'"));
-
-            for route in routes.iter() {
-                // Check for topic match
-                if match_topic(&route.pattern, &topic) {
-                    for bus in route.buses.iter() {
-                        match bus.request(&topic, message.clone()).await {
-                            Ok(res) => { result = Ok(res); break; },
-                            Err(e) => { result = Err(e); break; }
-                        }
-                    }
-                }
-            }
-
-            result
         })
     }
 

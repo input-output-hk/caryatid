@@ -1,8 +1,7 @@
 // In-memory pub-sub bus with multi-threaded async workers
-use tokio::sync::{mpsc, Mutex, oneshot};
-use tokio::sync::oneshot::Sender;
+use tokio::sync::{mpsc, Mutex};
 use std::sync::Arc;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use config::Config;
 use tracing::error;
 use futures::future::BoxFuture;
@@ -18,12 +17,6 @@ struct PatternSubscriber<M: MessageBounds> {
     subscriber: Arc<Subscriber<M>>,
 }
 
-/// Wrapper for a message with a oneshot to send back a result
-struct Envelope<M: MessageBounds> {
-    message: Arc<M>,
-    notify: Option<Sender<Arc<Result<M>>>>,
-}
-
 /// In-memory, zero-copy pub-sub bus
 pub struct InMemoryBus<M: MessageBounds> {
 
@@ -31,7 +24,7 @@ pub struct InMemoryBus<M: MessageBounds> {
     subscribers: Arc<Mutex<Vec<PatternSubscriber<M>>>>,
 
     /// Sender for received messages
-    sender: mpsc::Sender<(String, Arc<Mutex<Envelope<M>>>)>,
+    sender: mpsc::Sender<(String, Arc<M>)>,
 }
 
 impl<M: MessageBounds> InMemoryBus<M> {
@@ -40,7 +33,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
             .unwrap_or(DEFAULT_WORKERS) as usize;
 
         let (sender, mut receiver) =
-            mpsc::channel::<(String, Arc<Mutex<Envelope<M>>>)>(100);
+            mpsc::channel::<(String, Arc<M>)>(100);
 
         info!("Creating in-memory message bus with {} workers", num_workers);
 
@@ -52,17 +45,14 @@ impl<M: MessageBounds> InMemoryBus<M> {
         for _ in 0..num_workers {
             let (worker_tx, mut worker_rx) =
                 mpsc::channel::<(Arc<Subscriber<M>>,
-                                 Arc<Mutex<Envelope<M>>>)>(100);
+                                 String,
+                                 Arc<M>)>(100);
             worker_txs.push(worker_tx);
 
             // Spawn worker tasks that handle individual subscriber invocations
             tokio::spawn(async move {
-                while let Some((subscriber, envelope)) = worker_rx.recv().await {
-                    let result = subscriber(envelope.lock().await.message.clone()).await;
-                    let mut envelope = envelope.lock().await;
-                    if let Some(notify) = envelope.notify.take() {
-                        let _ = notify.send(result);
-                    }
+                while let Some((subscriber, topic, message)) = worker_rx.recv().await {
+                    subscriber(&topic, message.clone()).await;
                 }
             });
         }
@@ -72,7 +62,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
         tokio::spawn(async move {
             let mut round_robin_index = 0;
 
-            while let Some((topic, envelope)) = receiver.recv().await {
+            while let Some((topic, message)) = receiver.recv().await {
 
                 // Lock the subscribers for the topic
                 let subscribers = subs_clone.lock().await;
@@ -83,7 +73,8 @@ impl<M: MessageBounds> InMemoryBus<M> {
 
                         // Send the subscriber and the message to a worker
                         if let Err(e) = worker_tx.send((patsub.subscriber.clone(),
-                                                        envelope.clone())).await {
+                                                        topic.clone(),
+                                                        message.clone())).await {
                             error!("Failed to send message to worker: {}", e);
                         }
 
@@ -107,27 +98,8 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
         let message = message.clone();
 
         Box::pin(async move {
-            let envelope = Envelope { message, notify: None };
-            sender.send((topic, Arc::new(Mutex::new(envelope)))).await?;
+            sender.send((topic, message)).await?;
             Ok(())
-        })
-    }
-
-    /// Request/response on a given topic
-    fn request(&self, topic: &str, message: Arc<M>) ->
-        BoxFuture<'static, Result<Arc<Result<M>>>> {
-        let topic = topic.to_string();
-        let sender = self.sender.clone();
-        let message = message.clone();
-
-        Box::pin(async move {
-            let (notify_sender, notify_receiver) = oneshot::channel();
-            let envelope = Envelope { message, notify: Some(notify_sender) };
-            sender.send((topic, Arc::new(Mutex::new(envelope)))).await?;
-            match notify_receiver.await {
-                Ok(result) => Ok(result),
-                Err(e) => Err(anyhow!("Notify receive failed: {e}"))
-            }
         })
     }
 
