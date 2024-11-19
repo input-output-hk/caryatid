@@ -72,6 +72,8 @@ mod tests {
     fn star_matches_one_word() {
         assert!(match_topic("*", "foo"));
         assert!(!match_topic("*", "foo.bar"));
+        assert!(match_topic("foo.*", "foo.bar"));
+        assert!(match_topic("foo.*.baz", "foo.bar.baz"));
     }
 
     #[test]
@@ -80,6 +82,8 @@ mod tests {
         assert!(match_topic("#", "foo.bar.baz"));
         assert!(match_topic("foo.#", "foo.bar.baz"));
         assert!(match_topic("foo.bar.#", "foo.bar.baz"));
+        assert!(match_topic("foo.#.baz", "foo.bar.baz"));
+        assert!(match_topic("#.baz", "foo.bar.baz"));
         assert!(!match_topic("foo.bar.baz#", "foo.bar.baz"));
     }
 
