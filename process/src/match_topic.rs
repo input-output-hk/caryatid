@@ -55,3 +55,39 @@ pub fn match_topic(pattern: &str, topic: &str) -> bool {
     // If we reached the end of both the pattern and topic, it's a match
     i == pattern_parts.len() && j == topic_parts.len()
 }
+
+// -- Tests --
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_matches() {
+        assert!(match_topic("foo", "foo"));
+        assert!(!match_topic("foo", "bar"));
+        assert!(match_topic("foo.bar", "foo.bar"));
+    }
+
+    #[test]
+    fn star_matches_one_word() {
+        assert!(match_topic("*", "foo"));
+        assert!(!match_topic("*", "foo.bar"));
+    }
+
+    #[test]
+    fn hash_matches_multiple_words() {
+        assert!(match_topic("#", "foo"));
+        assert!(match_topic("#", "foo.bar.baz"));
+        assert!(match_topic("foo.#", "foo.bar.baz"));
+        assert!(match_topic("foo.bar.#", "foo.bar.baz"));
+        assert!(!match_topic("foo.bar.baz#", "foo.bar.baz"));
+    }
+
+    #[test]
+    fn mixed_patterns() {
+        assert!(match_topic("foo.*", "foo.bar"));
+        assert!(match_topic("foo.#", "foo.bar.baz"));
+        assert!(!match_topic("foo.*", "foo.bar.baz"));
+        assert!(match_topic("foo.*.#", "foo.bar.baz"));
+    }
+}
