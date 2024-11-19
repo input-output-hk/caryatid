@@ -19,7 +19,7 @@ pub struct Responder;
 
 impl Responder {
 
-    async fn handler(message: Arc<Value>) -> Result<Arc<Value>> {
+    async fn handler(message: Arc<Value>) -> Arc<Value> {
         info!("Handler received {:?}", message);
 
         let mut message = (*message).clone();
@@ -30,7 +30,7 @@ impl Responder {
         }
 
         info!("Responding with {:?}", message);
-        Ok(Arc::new(message))
+        Arc::new(message)
     }
 
     fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {

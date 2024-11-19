@@ -2,7 +2,7 @@
 use caryatid_sdk::{Context, MessageBusExt, Module, module};
 use caryatid_sdk::messages::RESTResponse;
 use std::sync::Arc;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use config::Config;
 use tracing::{info, error};
 use crate::message::Message;
@@ -24,22 +24,23 @@ impl RESTHelloWorld {
         info!("Creating REST Hello, world! responder on '{}'", topic);
 
         context.message_bus.handle(&topic, |message: Arc<Message>| {
-            match message.as_ref()
-            {
+            let response = match message.as_ref() {
                 Message::RESTRequest(request) => {
                     info!("REST hello world received {} {}", request.method, request.path);
-                    let response: Message = Message::RESTResponse(RESTResponse {
+                    RESTResponse {
                         code: 200,
                         body: "Hello, world!".to_string()
-                    });
-
-                    future::ready(Ok(Arc::new(response)))
-                }
+                    }
+                },
                 _ => {
-                    error!("Unexpected message type");
-                    future::ready(Err(anyhow!("Unexpected message type")))
+                    error!("Unexpected message type {:?}", message);
+                    RESTResponse {
+                        code: 500,
+                        body: "Unexpected message in response".to_string() }
                 }
-            }
+            };
+
+            future::ready(Arc::new(Message::RESTResponse(response)))
         })?;
 
         Ok(())

@@ -36,7 +36,7 @@ pub struct RESTResponse {
     // HTTP response code
     pub code: u16,
 
-    // Response body
+    // Response body (if any)
     pub body: String
 }
 

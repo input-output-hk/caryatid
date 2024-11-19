@@ -2,6 +2,7 @@
 use futures::future::{BoxFuture, Future, ready};
 use anyhow::{Result, anyhow};
 use std::sync::Arc;
+use tracing::error;
 
 /// Subscriber pattern function types - takes topic and message
 pub type Subscriber<M> = dyn Fn(&str, Arc<M>) ->
@@ -44,11 +45,12 @@ pub trait MessageBusExt<M: MessageBounds> {
         F: Fn(Arc<M>) + Send + Sync + 'static;
 
     /// Register a handler function which returns a future for
-    /// the result
+    /// the result.  They must return an M, not a Result, because
+    /// we have no generic way of passing back an error.
     fn handle<F, Fut>(&self, topic: &str, subscriber: F) -> Result<()>
     where
         F: Fn(Arc<M>) -> Fut + Send + Sync + Clone + 'static,
-        Fut: Future<Output = Result<Arc<M>>> + Send + 'static;
+        Fut: Future<Output = Arc<M>> + Send + 'static;
 }
 
 impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
@@ -69,7 +71,7 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
     fn handle<F, Fut>(&self, topic: &str, handler: F) -> Result<()>
     where
         F: Fn(Arc<M>) -> Fut + Send + Sync + Clone + 'static,
-        Fut: Future<Output = Result<Arc<M>>> + Send + 'static,
+        Fut: Future<Output = Arc<M>> + Send + 'static,
     {
         let arc_self = self.clone();
         let arc_subscriber: Arc<Subscriber<M>> =
@@ -80,17 +82,9 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
                 let response_topic = topic.to_owned() + ".response";
 
                 tokio::spawn(async move {
-                    match handler(message).await.as_ref() {
-                        Ok(response) => {
-                            // Return the result with response topic
-                            let _ = arc_self.publish(&response_topic, response.clone()).await;
-                        },
-                        Err(e) => {
-                            // Return an error response
-                            // !!! How can we reliably create an error message?
-                            // !!! Needs a trait in MessageBounds which ensures M::error()
-                            arc_self.publish(&response_topic, Arc::new(M::default())).await;
-                        }
+                    let response = handler(message).await;
+                    if let Err(e) = arc_self.publish(&response_topic, response.clone()).await {
+                        error!("Response on {response_topic} failed {e} - timed out?");
                     }
                 });
 
