@@ -33,9 +33,15 @@ impl Requester {
                 "message": "Hello, world!",
             }));
 
-            info!("Sending {:?}", test_message);
+            info!("Sending {:?} on {topic}", test_message);
+            match message_bus.request(&topic, test_message.clone()).await {
+                Ok(response) => { info!("Got response: {:?}", response); },
+                Err(e) => { error!("Got error: {e}"); }
+            }
 
-            match message_bus.request(&topic, test_message).await {
+            // Send another on a bad topic to test timeout
+            info!("Sending {:?} on bad.topic", test_message);
+            match message_bus.request("bad.topic", test_message).await {
                 Ok(response) => { info!("Got response: {:?}", response); },
                 Err(e) => { error!("Got error: {e}"); }
             }

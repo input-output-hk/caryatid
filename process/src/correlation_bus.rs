@@ -10,6 +10,9 @@ use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
 use tracing::{debug, info, error};
 use std::collections::{HashSet, HashMap};
 use rand::Rng;
+use tokio::time::{timeout, Duration};
+
+const DEFAULT_TIMEOUT: u64 = 5;
 
 /// Wrapper for a message with a oneshot to send back a result
 struct Request<M: MessageBounds> {
@@ -27,19 +30,26 @@ pub struct CorrelationBus<M: MessageBounds> {
 
     /// Active requests, by ID
     requests: Arc<Mutex<HashMap<String, Request<M>>>>,
+
+    /// Timeout
+    timeout: Duration,
 }
 
 impl<M: MessageBounds> CorrelationBus<M> {
 
     /// Construct with config, wrapping the given bus
-    pub fn new(_config: &Config, bus: Arc<dyn MessageBus<M>>) -> Self {
+    pub fn new(config: &Config, bus: Arc<dyn MessageBus<M>>) -> Self {
 
         info!("Creating correlation bus");
+
+        let timeout = config.get::<u64>("timeout").unwrap_or(DEFAULT_TIMEOUT);
+        let timeout = Duration::from_secs(timeout);
 
         Self {
             bus,
             response_subscribed: Arc::new(Mutex::new(HashSet::new())),
             requests: Arc::new(Mutex::new(HashMap::new())),
+            timeout
         }
     }
 }
@@ -60,6 +70,7 @@ impl<M> MessageBus<M> for CorrelationBus<M>
         let requests = self.requests.clone();
         let bus = self.bus.clone();
         let topic = topic.to_string();
+        let req_timeout = self.timeout;
 
         // Generate a 64-bit request ID
         let mut rng = rand::thread_rng();
@@ -130,9 +141,12 @@ impl<M> MessageBus<M> for CorrelationBus<M>
             let _ = bus.publish(&request_topic, message).await;
 
             // Get the result back
-            match notify_receiver.await {
-                Ok(res) => res,
-                Err(e) => Err(anyhow!("Notify receive failed: {e}"))
+            match timeout(req_timeout, notify_receiver).await {
+                Ok(result) => match result {
+                    Ok(res) => res,
+                    Err(e) => Err(anyhow!("Notify receive failed: {e}"))
+                }
+                Err(_) => Err(anyhow!("Request timed out"))
             }
         })
     }

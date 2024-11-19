@@ -15,6 +15,10 @@ exchange = "caryatid"
 class = "in-memory"
 workers = 10
 
+#Request-response correlation
+[message-correlator]
+timeout = 1
+
 # Message routing
 [[message-router.route]]
 pattern = "#"
