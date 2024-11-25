@@ -1,9 +1,9 @@
-# Top-level configuration for Caryatid process
+# Top-level configuration for Caryatid process using typed messages
 
-[module.typed-subscriber]
+[module.subscriber]
 topic = "sample.#"
 
-[module.typed-publisher]
+[module.publisher]
 topic = "sample.test"
 
 [module.clock]

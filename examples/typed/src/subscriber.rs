@@ -10,12 +10,12 @@ use crate::message::Message;
 /// Typed subscriber module
 #[module(
     message_type(Message),
-    name = "typed-subscriber",
+    name = "subscriber",
     description = "Typed subscriber module"
 )]
-pub struct TypedSubscriber;
+pub struct Subscriber;
 
-impl TypedSubscriber {
+impl Subscriber {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
@@ -23,7 +23,7 @@ impl TypedSubscriber {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
-        info!("Creating typed subscriber on '{}'", topic);
+        info!("Creating subscriber on '{}'", topic);
 
         // Register a subscriber on the message bus to listen for messages
         // Message is an enum of all possible messages

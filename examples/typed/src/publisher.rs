@@ -10,12 +10,12 @@ use crate::message::{Test, Message};
 /// Typed publisher module
 #[module(
     message_type(Message),
-    name = "typed-publisher",
+    name = "publisher",
     description = "Typed publisher module"
 )]
-pub struct TypedPublisher;
+pub struct Publisher;
 
-impl TypedPublisher {
+impl Publisher {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
@@ -24,7 +24,7 @@ impl TypedPublisher {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
-        info!("Creating typed publisher on '{}'", topic);
+        info!("Creating publisher on '{}'", topic);
 
         // Send test messages to the message bus on 'sample_topic'
         // Let this run async

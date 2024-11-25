@@ -10,11 +10,11 @@ use std::sync::Arc;
 use crate::message::Message;
 
 // Modules in the same crate
-mod typed_subscriber;
-use typed_subscriber::TypedSubscriber;
+mod subscriber;
+use subscriber::Subscriber;
 
-mod typed_publisher;
-use typed_publisher::TypedPublisher;
+mod publisher;
+use publisher::Publisher;
 
 mod message;
 
@@ -42,8 +42,8 @@ pub async fn main() -> Result<()> {
     let mut process = Process::<Message>::create(config).await;
 
     // Register modules
-    TypedSubscriber::register(&mut process);
-    TypedPublisher::register(&mut process);
+    Subscriber::register(&mut process);
+    Publisher::register(&mut process);
     Clock::<Message>::register(&mut process);
 
     // Run it
