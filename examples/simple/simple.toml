@@ -1,9 +1,9 @@
-# Top-level configuration for Caryatid process
+# Top-level configuration for example pub-sub Caryatid process
 
-[module.simple-subscriber]
+[module.subscriber]
 topic = "sample.#"
 
-[module.simple-publisher]
+[module.publisher]
 topic = "sample.test"
 
 [message-bus.external]

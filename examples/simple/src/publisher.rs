@@ -9,16 +9,16 @@ use serde_json::json;
 /// Standard message type
 type MType = serde_json::Value;
 
-/// Simple publisher module
+/// Sample publisher module
 // Define it as a module, with a name and description
 #[module(
     message_type(MType),
-    name = "simple-publisher",
-    description = "Simple publisher module"
+    name = "publisher",
+    description = "Sample publisher module"
 )]
-pub struct SimplePublisher;
+pub struct Publisher;
 
-impl SimplePublisher {
+impl Publisher {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
@@ -27,7 +27,7 @@ impl SimplePublisher {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
-        info!("Creating simple publisher on '{}'", topic);
+        info!("Creating publisher on '{}'", topic);
 
         // Send a test JSON message to the message bus on 'sample_topic'
         // Let this run async

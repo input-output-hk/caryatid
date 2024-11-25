@@ -9,11 +9,11 @@ use tracing_subscriber;
 use std::sync::Arc;
 
 // Modules in the same crate
-mod simple_subscriber;
-use simple_subscriber::SimpleSubscriber;
+mod subscriber;
+use subscriber::Subscriber;
 
-mod simple_publisher;
-use simple_publisher::SimplePublisher;
+mod publisher;
+use publisher::Publisher;
 
 /// Standard message type
 type MType = serde_json::Value;
@@ -25,7 +25,7 @@ pub async fn main() -> Result<()> {
     // Initialise tracing
     tracing_subscriber::fmt::init();
 
-    info!("Caryatid modular framework - simple example process");
+    info!("Caryatid modular framework - simple pub-sub process");
 
     // Read the config
     let config = Arc::new(Config::builder()
@@ -38,8 +38,8 @@ pub async fn main() -> Result<()> {
     let mut process = Process::<MType>::create(config).await;
 
     // Register modules
-    SimpleSubscriber::register(&mut process);
-    SimplePublisher::register(&mut process);
+    Subscriber::register(&mut process);
+    Publisher::register(&mut process);
 
     // Run it
     process.run().await?;

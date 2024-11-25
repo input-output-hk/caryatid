@@ -8,16 +8,16 @@ use tracing::{info};
 /// Standard message type
 type MType = serde_json::Value;
 
-/// Simple module
+/// Sample module
 // Define it as a module, with a name and description
 #[module(
     message_type(MType),
-    name = "simple-subscriber",
-    description = "Simple subscriber module"
+    name = "subscriber",
+    description = "Sample subscriber module"
 )]
-pub struct SimpleSubscriber;
+pub struct Subscriber;
 
-impl SimpleSubscriber {
+impl Subscriber {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
@@ -25,7 +25,7 @@ impl SimpleSubscriber {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
-        info!("Creating simple subscriber on '{}'", topic);
+        info!("Creating subscriber on '{}'", topic);
 
         // Register a subscriber on the message bus to listen for messages
         // Messages are passed as JSON objects, in an Arc
