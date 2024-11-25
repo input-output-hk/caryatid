@@ -90,13 +90,12 @@ The code is structured as follows:
 
 * [`sdk`](./sdk): the SDK required to build modules - mostly traits and macros
 * [`process`](./process): a library for building a microservice process.  Most of the implementation is in here.
-* [`modules`](./modules): standard modules likely to be useful across projects
-* [`examples`](./examples): simple example code demonstrating various features
-
-### Examples
-
-* [`examples/simple`](./examples/simple): Simplest possible pub-sub with JSON
-* [`examples/typed`](./examples/typed): Pub-sub with typed messages
-* [`examples/request`](./examples/request): Request response with JSON
-* [`examples/rest`](./examples/rest): A modular REST server
-* [`examples/performance`](./examples/performance): Performance testing
+* [`modules`](./modules): standard modules likely to be useful across projects:
+  * [`modules/clock`](./modules/clock): a simple once-per-second ticker / timebase
+  * [`modules/rest_server`](./modules/rest_server): REST server endpoint 
+* [`examples`](./examples): simple example code demonstrating various features:
+  * [`examples/simple`](./examples/simple): Simplest possible pub-sub with JSON
+  * [`examples/typed`](./examples/typed): Pub-sub with typed messages
+  * [`examples/request`](./examples/request): Request response with JSON
+  * [`examples/rest`](./examples/rest): A modular REST server
+  * [`examples/performance`](./examples/performance): Performance testing
