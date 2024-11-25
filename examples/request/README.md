@@ -32,7 +32,7 @@ the test run quicker, this is set in the [configuration](request.toml#L20) to 1 
 timeout = 1
 ```
 
-The [`Responder`](src/responder.rs) defines an async [handler function](src/responder.rs#L26) which adds a response property
+The [`Responder`](src/responder.rs) defines an async [handler function](src/responder.rs#L22) which adds a response property
 to the message and returns it:
 
 ```rust
