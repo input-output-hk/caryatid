@@ -14,7 +14,7 @@ topic = "rest.get.hello"
 
 [module.rest-hello-world-2]
 class = "rest-hello-world"
-topic = "rest2.get.hello2"
+topic = "rest2.get.hello"
 
 [message-bus.internal]
 class = "in-memory"
