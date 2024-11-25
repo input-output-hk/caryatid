@@ -1,6 +1,6 @@
 # Configuration for Caryatid performance-testing process
 
-[module.perf-publisher]
+[module.publisher]
 topic = "performance.test"
 
 # Number of messages per thread
@@ -10,9 +10,9 @@ count = 1000000
 threads = 1
 
 # Length of 'data' string
-length = 10000
+length = 1000000
 
-[module.perf-subscriber]
+[module.subscriber]
 topic = "performance.test"
 
 [message-bus.external]

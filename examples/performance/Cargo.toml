@@ -18,6 +18,8 @@ config = "0.14.0"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0.214", features = ["derive"] }
+arcstr = { version = "1.2.0", features = ["serde"] }
 serde_json = "1.0.132"
 chrono = "0.4.38"
 futures = "0.3.31"

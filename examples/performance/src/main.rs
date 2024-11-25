@@ -8,11 +8,14 @@ use tracing_subscriber;
 use std::sync::Arc;
 
 // Modules in the same crate
-mod perf_subscriber;
-use perf_subscriber::PerfSubscriber;
+mod subscriber;
+use subscriber::Subscriber;
 
-mod perf_publisher;
-use perf_publisher::PerfPublisher;
+mod publisher;
+use publisher::Publisher;
+
+mod message;
+use message::Message;
 
 /// Standard main
 #[tokio::main]
@@ -31,11 +34,11 @@ pub async fn main() -> Result<()> {
         .unwrap());
 
     // Create the process
-    let mut process = Process::create(config).await;
+    let mut process = Process::<Message>::create(config).await;
 
     // Register modules
-    PerfSubscriber::register(&mut process);
-    PerfPublisher::register(&mut process);
+    Subscriber::register(&mut process);
+    Publisher::register(&mut process);
 
     // Run it
     process.run().await?;

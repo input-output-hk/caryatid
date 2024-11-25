@@ -2,11 +2,8 @@
 
 This example attempts to measure the raw performance of the Caryatid framework for simple
 pub-sub messages passed internally and via an external bus (RabbitMQ).  It uses a multi-threaded
-publisher which can send simple JSON messages of a configured length, and a subscriber which just
+publisher which can send simple typed messages of a configured length, and a subscriber which just
 counts messages and elapsed time and outputs the statistics when it gets a "stop" message.
-
-*Note: The current version uses JSON object messages, which skews the result because of the cost of constructing and unpacking the JSON objects.
-The next version will use a typed message.*
 
 ## How to run it
 
@@ -34,11 +31,11 @@ threads = 1
 length = 10000
 ```
 
-By default the messages are routed internally - you can change this to external by changing the [route](performance.toml#L29):
+By default the messages are routed internally - you can change this to external by changing the
+[route](performance.toml#L29):
 
 ```toml
 [[message-router.route]]
 pattern = "#"
 bus = "external"
 ```
-

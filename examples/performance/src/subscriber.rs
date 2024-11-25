@@ -6,17 +6,15 @@ use config::Config;
 use tracing::info;
 use tokio::time::Instant;
 use tokio::sync::Mutex;
-
-/// Standard message type
-type MType = serde_json::Value;
+use crate::message::Message;
 
 /// Performance test subscriber
 #[module(
-    message_type(MType),
-    name = "perf-subscriber",
+    message_type(Message),
+    name = "subscriber",
     description = "Performance test subscriber"
 )]
-pub struct PerfSubscriber;
+pub struct Subscriber;
 
 struct Stats {
     first_message_time: Instant,
@@ -24,9 +22,9 @@ struct Stats {
     count: u64,
 }
 
-impl PerfSubscriber {
+impl Subscriber {
 
-    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
@@ -40,11 +38,11 @@ impl PerfSubscriber {
 
         // Register a subscriber
         context.message_bus.subscribe(&topic,
-                                      move |message: Arc<serde_json::Value>| {
+                                      move |message: Arc<Message>| {
            let stats = stats.clone();
            tokio::spawn(async move {
-               match message["stop"].as_bool() {
-                   Some(true) => {
+               match message.as_ref() {
+                   Message::Stop(_) => {
                        let stats = stats.lock().await;
                        let elapsed = stats.last_message_time.duration_since(
                            stats.first_message_time).as_secs_f64();
