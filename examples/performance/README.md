@@ -9,8 +9,10 @@ counts messages and elapsed time and outputs the statistics when it gets a "stop
 
 ```shell
 $ cd examples/performance
-$ cargo run
+$ cargo run --release
 ```
+
+Notice the `--release` flag to get realistic production performance.  It makes a *big* difference!
 
 ## Points of interest
 
