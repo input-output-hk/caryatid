@@ -36,7 +36,7 @@ impl RESTHelloWorld {
                     error!("Unexpected message type {:?}", message);
                     RESTResponse {
                         code: 500,
-                        body: "Unexpected message in response".to_string() }
+                        body: "Unexpected message in REST request".to_string() }
                 }
             };
 

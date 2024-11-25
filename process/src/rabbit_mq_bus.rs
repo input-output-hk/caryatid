@@ -110,7 +110,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
     ) -> Result<()> {
 
         // Clone over async boundary
-        let connection = self.connection.clone();  // Clone the connection
+        let connection = self.connection.clone();
         let topic = topic.to_string();
         let exchange = self.exchange.clone();
 
