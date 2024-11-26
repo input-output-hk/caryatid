@@ -4,7 +4,7 @@
 topic = "sample.#"
 
 [module.publisher]
-topic = "sample.test"
+topic = "sample"
 
 [module.clock]
 

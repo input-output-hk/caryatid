@@ -23,7 +23,7 @@ impl Publisher {
         let message_bus = context.message_bus.clone();
 
         // Get configuration
-        let topic = config.get_string("topic").unwrap_or("test".to_string());
+        let topic = config.get_string("topic").unwrap_or("sample".to_string());
         info!("Creating publisher on '{}'", topic);
 
         // Send test messages to the message bus on 'sample_topic'
@@ -36,14 +36,14 @@ impl Publisher {
                 number: 42
             });
             info!("Sending {:?}", test_message_1);
-            message_bus.publish(&topic, Arc::new(test_message_1))
+            message_bus.publish(&format!("{topic}.test"), Arc::new(test_message_1))
                 .await.expect("Failed to publish message");
 
             // Simple string
             let test_message_2 = Message::String("Bye!".to_string());
             info!("Sending {:?}", test_message_2);
 
-            message_bus.publish(&topic, Arc::new(test_message_2))
+            message_bus.publish(&format!("{topic}.string"), Arc::new(test_message_2))
                 .await.expect("Failed to publish message");
 
             // JSON
@@ -51,7 +51,7 @@ impl Publisher {
                 "message": "Hello, world!",
             }));
             info!("Sending {:?}", test_message_3);
-            message_bus.publish(&topic, Arc::new(test_message_3))
+            message_bus.publish(&format!("{topic}.json"), Arc::new(test_message_3))
                 .await.expect("Failed to publish message");
         });
 
