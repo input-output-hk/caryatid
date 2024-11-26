@@ -160,3 +160,142 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
     }
 }
 
+// -- Tests --
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_bus::MockBus;
+    use config::{Config, FileFormat};
+    use futures::future::ready;
+
+    // Helper to set up a routing bus with 2 mock sub-buses, from given config string
+    struct TestSetup<M: MessageBounds> {
+        mock_foo: Arc<MockBus<M>>,
+        mock_bar: Arc<MockBus<M>>,
+        bus: RoutingBus<M>
+    }
+
+    impl<M: MessageBounds> TestSetup<M> {
+
+        fn new(config_str: &str) -> Self {
+
+            // Create mock buses
+            let mock_foo = Arc::new(MockBus::<M>::new());
+            let mock_bar = Arc::new(MockBus::<M>::new());
+
+            // BusInfo to pass to routing
+            let mut buses: Vec<Arc<BusInfo<M>>> = Vec::new();
+            buses.push(Arc::new(BusInfo {
+                id: "foo".to_string(),
+                bus: mock_foo.clone()
+            }));
+
+            buses.push(Arc::new(BusInfo {
+                id: "bar".to_string(),
+                bus: mock_bar.clone()
+            }));
+
+            // Parse config
+            let config = Config::builder()
+                .add_source(config::File::from_str(config_str, FileFormat::Toml))
+                .build()
+                .unwrap();
+
+            // Create the bus
+            let bus = RoutingBus::<M>::new(&config, Arc::new(buses));
+
+            Self { mock_foo, mock_bar, bus }
+        }
+    }
+
+    #[tokio::test]
+    async fn subscribe_with_double_route_subscribes_to_both() {
+
+        let config = r###"
+[[route]]
+pattern = "#"
+bus = ["foo", "bar"]
+"###;
+
+        let setup = TestSetup::<String>::new(config);
+
+        // Subscribe
+        assert!(setup.bus.register_subscriber("test",
+                                              Arc::new(|_topic: &str, _message: Arc<String>| {
+                                                  Box::pin(ready(()))
+                                              }))
+                .is_ok());
+
+        // Check foo got it
+        let foo_subscribes = setup.mock_foo.subscribes.lock().unwrap();
+        assert_eq!(foo_subscribes.len(), 1);
+        let foo_0 = &foo_subscribes[0];
+        assert_eq!(foo_0, "test");
+
+        // Check bar got it
+        let bar_subscribes = setup.mock_bar.subscribes.lock().unwrap();
+        assert_eq!(bar_subscribes.len(), 1);
+        let bar_0 = &bar_subscribes[0];
+        assert_eq!(bar_0, "test");
+    }
+
+    #[tokio::test]
+    async fn publish_with_double_route_sends_to_both() {
+
+        let config = r###"
+[[route]]
+pattern = "#"
+bus = ["foo", "bar"]
+"###;
+
+        let setup = TestSetup::<String>::new(config);
+
+        // Send a message
+        assert!(setup.bus.publish("test", Arc::new("Hello, world!".to_string())).await.is_ok());
+
+        // Check foo got it
+        let foo_publishes = setup.mock_foo.publishes.lock().unwrap();
+        assert_eq!(foo_publishes.len(), 1);
+        let foo_0 = &foo_publishes[0];
+        assert_eq!(foo_0.topic, "test");
+        assert_eq!(foo_0.message.as_ref(), "Hello, world!");
+
+        // Check bar got it
+        let bar_publishes = setup.mock_bar.publishes.lock().unwrap();
+        assert_eq!(bar_publishes.len(), 1);
+        let bar_0 = &bar_publishes[0];
+        assert_eq!(bar_0.topic, "test");
+        assert_eq!(bar_0.message.as_ref(), "Hello, world!");
+    }
+
+    #[tokio::test]
+    async fn publish_with_single_route_sends_to_only_one() {
+
+        let config = r###"
+[[route]]
+pattern = "test"
+bus = "foo"
+
+[[route]]
+pattern = "#"
+bus = ["foo", "bar"]
+"###;
+
+        let setup = TestSetup::<String>::new(config);
+
+        // Send a message
+        assert!(setup.bus.publish("test", Arc::new("Hello, world!".to_string())).await.is_ok());
+
+        // Check foo got it
+        let foo_publishes = setup.mock_foo.publishes.lock().unwrap();
+        assert_eq!(foo_publishes.len(), 1);
+        let foo_0 = &foo_publishes[0];
+        assert_eq!(foo_0.topic, "test");
+        assert_eq!(foo_0.message.as_ref(), "Hello, world!");
+
+        // Check bar didn't get it
+        let bar_publishes = setup.mock_bar.publishes.lock().unwrap();
+        assert_eq!(bar_publishes.len(), 0);
+    }
+
+}
