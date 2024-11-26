@@ -31,7 +31,7 @@ $ cargo run
 ## Points of interest
 
 The messages are defined in the `Message` enum in [message.rs](src/message.rs#L12).  Notice how we provide a `None` option and a variety of other
-message types, and we derive seralization and deserialization implementations:
+message types, and we derive serialisation and deserialisation implementations:
 
 ```rust
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -74,7 +74,7 @@ The [publisher](src/publisher.rs) publishes a variety of different message types
                 number: 42
             });
             info!("Sending {:?}", test_message_1);
-            message_bus.publish(&topic, Arc::new(test_message_1))
+            message_bus.publish(&format!("{topic}.test"), Arc::new(test_message_1))
                 .await.expect("Failed to publish message");
 ```
 
