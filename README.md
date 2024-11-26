@@ -99,3 +99,4 @@ The code is structured as follows:
   * [`examples/request`](./examples/request): Request response with JSON
   * [`examples/rest`](./examples/rest): A modular REST server
   * [`examples/performance`](./examples/performance): Performance testing
+  * [`examples/haskell`](./examples/haskell): Haskell interop demonstration

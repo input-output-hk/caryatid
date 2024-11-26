@@ -6,4 +6,6 @@ This directory contains simple examples showing how to use various features of t
 * [Basic request](request/) - a request-response model using JSON messages
 * [Typed messages](typed/) - using standard and custom typed messages
 * [REST Server](rest/) - how to provide a REST endpoint mapped to request messages
-* [Performance testing](performance/) - Testing raw performance of the internal and external buses 
+* [Performance testing](performance/) - Testing raw performance of the internal and external buses
+* [Haskell](haskell/) - Demonstrating interoperability with Haskell code
+
