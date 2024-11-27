@@ -19,7 +19,7 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
 
     /// Publish a message - note async but not defined as such because this
     /// is used dynamically
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, anyhow::Result<()>>;
+    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>>;
 
     /// Request/response - as publish() but returns a result
     /// Note only implemented in CorrelationBus
@@ -28,8 +28,9 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
        Box::pin(ready(Err(anyhow!("Not implemented"))))
     }
 
-    /// Register an subscriber function - note sync
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>) -> Result<()>;
+    /// Register an subscriber function
+    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
+                           -> BoxFuture<'static, Result<()>>;
 
     /// Shut down
     fn shutdown(&self) -> BoxFuture<'static, anyhow::Result<()>>;
@@ -39,7 +40,7 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
 /// Needed because MessageBus must be object-safe to be used dynamically,
 /// which means we can't accept closures through type parameters
 pub trait MessageBusExt<M: MessageBounds> {
-    /// Register a simple lambda/closure with no result
+    /// Register a simple synchronous lambda/closure with no result
     fn subscribe<F>(&self, topic: &str, subscriber: F) -> Result<()>
     where
         F: Fn(Arc<M>) + Send + Sync + 'static;
@@ -59,13 +60,20 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
     where
         F: Fn(Arc<M>) + Send + Sync + 'static
     {
-        let arc_subscriber: Arc<Subscriber<M>> =
-            Arc::new(move |_topic: &str, message: Arc<M>| {
-                subscriber(message);
-                Box::pin(ready(()))
-            });
+        let arc_self = self.clone();
+        let topic = topic.to_string();
 
-        self.register_subscriber(topic, arc_subscriber)
+        tokio::spawn(async move {
+            let arc_subscriber: Arc<Subscriber<M>> =
+                Arc::new(move |_topic: &str, message: Arc<M>| {
+                    subscriber(message);
+                    Box::pin(ready(()))
+                });
+
+            arc_self.register_subscriber(&topic, arc_subscriber).await
+        });
+
+        Ok(())
     }
 
     fn handle<F, Fut>(&self, topic: &str, handler: F) -> Result<()>
@@ -74,26 +82,31 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
         Fut: Future<Output = Arc<M>> + Send + 'static,
     {
         let arc_self = self.clone();
-        let arc_subscriber: Arc<Subscriber<M>> =
-            Arc::new(move |topic, message: Arc<M>| {
+        let topic = topic.to_string();
 
-                let arc_self = arc_self.clone();
-                let handler = handler.clone();
-                let response_topic = topic.to_owned() + ".response";
+        tokio::spawn(async move {
+            let arc_self_2 = arc_self.clone();
+            let arc_subscriber: Arc<Subscriber<M>> =
+                Arc::new(move |topic, message: Arc<M>| {
 
-                tokio::spawn(async move {
-                    let response = handler(message).await;
-                    if let Err(e) = arc_self.publish(&response_topic, response.clone()).await {
-                        error!("Response on {response_topic} failed {e} - timed out?");
-                    }
+                    let arc_self = arc_self_2.clone();
+                    let handler = handler.clone();
+                    let response_topic = topic.to_owned() + ".response";
+
+                    Box::pin(async move {
+                        let response = handler(message).await;
+                        if let Err(e) = arc_self.publish(&response_topic, response.clone()).await {
+                            error!("Response on {response_topic} failed {e} - timed out?");
+                        }
+                    })
                 });
 
-                Box::pin(ready(()))
-            });
+            // Subscribe for all request IDs in this topic
+            let request_pattern = format!("{topic}.*");
+            arc_self.register_subscriber(&request_pattern, arc_subscriber).await
+        });
 
-        // Subscribe for all request IDs in this topic
-        let request_pattern = format!("{topic}.*");
-        self.register_subscriber(&request_pattern, arc_subscriber)
+        Ok(())
     }
 }
 

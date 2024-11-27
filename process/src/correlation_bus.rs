@@ -125,7 +125,7 @@ impl<M> MessageBus<M> for CorrelationBus<M>
 
                         Box::pin(ready(()))
                     })
-                );
+                ).await;
             }
 
             // Record in-flight requests with a OneShot to recover the result
@@ -152,7 +152,8 @@ impl<M> MessageBus<M> for CorrelationBus<M>
     }
 
     // Subscribe for a message with an subscriber function
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>) -> Result<()> {
+    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
+                                                      -> BoxFuture<'static, Result<()>> {
         self.bus.register_subscriber(topic, subscriber)
     }
 

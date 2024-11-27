@@ -10,7 +10,7 @@ use anyhow::{Result, Context};
 use config::Config;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use futures::future::BoxFuture;
+use futures::future::{ready, BoxFuture};
 use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
 use std::marker::PhantomData;
 use tracing::{info, error};
@@ -103,12 +103,8 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
     }
 
     // Subscribe to a topic
-    fn register_subscriber(
-        &self,
-        topic: &str,
-        subscriber: Arc<Subscriber<M>>,
-    ) -> Result<()> {
-
+    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
+                           -> BoxFuture<'static, Result<()>> {
         // Clone over async boundary
         let connection = self.connection.clone();
         let topic = topic.to_string();
@@ -171,7 +167,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
             Ok::<(), anyhow::Error>(())  // Inform Rust what ? should return
         });
 
-        Ok(())
+        Box::pin(ready(Ok(())))
     }
 
     /// Shut down the bus connection

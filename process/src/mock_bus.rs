@@ -3,7 +3,7 @@ use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
 use std::sync::Arc;
 use futures::future::{ready, BoxFuture};
 use anyhow::Result;
-use std::sync::Mutex;  // ! Note, not tokio - keeps tests simpler
+use tokio::sync::Mutex;
 
 #[cfg(test)]
 pub struct PublishRecord<M: MessageBounds> {
@@ -34,20 +34,23 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         let publishes = self.publishes.clone();
         let topic = topic.to_string();
 
-        let mut publishes = publishes.lock().unwrap();
-        publishes.push(PublishRecord{ topic, message });
-
-        Box::pin(ready(Ok(())))
+        Box::pin(async move {
+            let mut publishes = publishes.lock().await;
+            publishes.push(PublishRecord{ topic, message });
+            Ok(())
+        })
     }
 
-    fn register_subscriber(&self, topic: &str, _subscriber: Arc<Subscriber<M>>) -> Result<()> {
+    fn register_subscriber(&self, topic: &str, _subscriber: Arc<Subscriber<M>>)
+                           -> BoxFuture<'static, Result<()>> {
         let subscribes = self.subscribes.clone();
         let topic = topic.to_string();
 
-        let mut subscribes = subscribes.lock().unwrap();
-        subscribes.push(topic);
-
-        Ok(())
+        Box::pin(async move {
+            let mut subscribes = subscribes.lock().await;
+            subscribes.push(topic);
+            Ok(())
+        })
     }
 
     fn shutdown(&self) -> BoxFuture<'static, Result<()>> {

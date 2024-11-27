@@ -91,8 +91,8 @@ impl<M: MessageBounds> InMemoryBus<M> {
 impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
 
     /// Publish a message on a given topic
-    fn publish(&self, topic: &str, message: Arc<M>) ->
-        BoxFuture<'static, Result<()>> {
+    fn publish(&self, topic: &str, message: Arc<M>)
+               -> BoxFuture<'static, Result<()>> {
         let topic = topic.to_string();
         let sender = self.sender.clone();
         let message = message.clone();
@@ -105,18 +105,17 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
 
     /// Subscribe for a message with an subscriber function
     fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
-                         -> Result<()> {
+                           -> BoxFuture<'static, Result<()>> {
         let subscribers = self.subscribers.clone();
         let topic = topic.to_string();
-        tokio::spawn(async move {
+        Box::pin(async move {
             let mut subscribers = subscribers.lock().await;
             subscribers.push(PatternSubscriber {
                 pattern: topic,
                 subscriber: subscriber
             });
-        });
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Shut down, clearing all subscribers

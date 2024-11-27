@@ -103,7 +103,6 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         let topic = topic.to_string();
 
         Box::pin(async move {
-
             let routes = routes.lock().await;
             let topic = topic.clone();
 
@@ -121,28 +120,27 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
     }
 
     // Subscribe for a message with an subscriber function
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>) -> Result<()> {
-        let topic = topic.to_string();
+    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
+                           -> BoxFuture<'static, Result<()>> {
         let routes = self.routes.clone();
+        let topic = topic.to_string();
 
-        tokio::spawn(async move {
+        Box::pin(async move {
             let routes = routes.lock().await;
-            let topic = topic.clone();
-            let subscriber = subscriber.clone();
 
             for route in routes.iter() {
                 // Check for topic match
                 if match_topic(&route.pattern, &topic) {
                     for bus in route.buses.iter() {
                         let _ = bus.register_subscriber(&topic,
-                                                        subscriber.clone());
+                                                        subscriber.clone()).await;
                     }
                     break;  // Stop after match
                 }
             }
-        });
 
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Shut down, shutting down all the buses
@@ -224,19 +222,50 @@ bus = ["foo", "bar"]
                                               Arc::new(|_topic: &str, _message: Arc<String>| {
                                                   Box::pin(ready(()))
                                               }))
+                .await
                 .is_ok());
 
         // Check foo got it
-        let foo_subscribes = setup.mock_foo.subscribes.lock().unwrap();
+        let foo_subscribes = setup.mock_foo.subscribes.lock().await;
         assert_eq!(foo_subscribes.len(), 1);
         let foo_0 = &foo_subscribes[0];
         assert_eq!(foo_0, "test");
 
         // Check bar got it
-        let bar_subscribes = setup.mock_bar.subscribes.lock().unwrap();
+        let bar_subscribes = setup.mock_bar.subscribes.lock().await;
         assert_eq!(bar_subscribes.len(), 1);
         let bar_0 = &bar_subscribes[0];
         assert_eq!(bar_0, "test");
+    }
+
+    #[tokio::test]
+    async fn subscribe_with_single_route_subscribes_to_only_one() {
+
+        let config = r###"
+[[route]]
+pattern = "#"
+bus = "foo"
+"###;
+
+        let setup = TestSetup::<String>::new(config);
+
+        // Subscribe
+        assert!(setup.bus.register_subscriber("test",
+                                              Arc::new(|_topic: &str, _message: Arc<String>| {
+                                                  Box::pin(ready(()))
+                                              }))
+                .await
+                .is_ok());
+
+        // Check foo got it
+        let foo_subscribes = setup.mock_foo.subscribes.lock().await;
+        assert_eq!(foo_subscribes.len(), 1);
+        let foo_0 = &foo_subscribes[0];
+        assert_eq!(foo_0, "test");
+
+        // Check bar didn't get it
+        let bar_subscribes = setup.mock_bar.subscribes.lock().await;
+        assert_eq!(bar_subscribes.len(), 0);
     }
 
     #[tokio::test]
@@ -254,14 +283,14 @@ bus = ["foo", "bar"]
         assert!(setup.bus.publish("test", Arc::new("Hello, world!".to_string())).await.is_ok());
 
         // Check foo got it
-        let foo_publishes = setup.mock_foo.publishes.lock().unwrap();
+        let foo_publishes = setup.mock_foo.publishes.lock().await;
         assert_eq!(foo_publishes.len(), 1);
         let foo_0 = &foo_publishes[0];
         assert_eq!(foo_0.topic, "test");
         assert_eq!(foo_0.message.as_ref(), "Hello, world!");
 
         // Check bar got it
-        let bar_publishes = setup.mock_bar.publishes.lock().unwrap();
+        let bar_publishes = setup.mock_bar.publishes.lock().await;
         assert_eq!(bar_publishes.len(), 1);
         let bar_0 = &bar_publishes[0];
         assert_eq!(bar_0.topic, "test");
@@ -287,14 +316,14 @@ bus = ["foo", "bar"]
         assert!(setup.bus.publish("test", Arc::new("Hello, world!".to_string())).await.is_ok());
 
         // Check foo got it
-        let foo_publishes = setup.mock_foo.publishes.lock().unwrap();
+        let foo_publishes = setup.mock_foo.publishes.lock().await;
         assert_eq!(foo_publishes.len(), 1);
         let foo_0 = &foo_publishes[0];
         assert_eq!(foo_0.topic, "test");
         assert_eq!(foo_0.message.as_ref(), "Hello, world!");
 
         // Check bar didn't get it
-        let bar_publishes = setup.mock_bar.publishes.lock().unwrap();
+        let bar_publishes = setup.mock_bar.publishes.lock().await;
         assert_eq!(bar_publishes.len(), 0);
     }
 
