@@ -163,3 +163,120 @@ impl<M> MessageBus<M> for CorrelationBus<M>
     }
 }
 
+// -- Tests --
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_bus::MockBus;
+    use config::{Config, FileFormat};
+    use futures::future::ready;
+    use caryatid_sdk::MessageBusExt;
+    use tracing::Level;
+    use tracing_subscriber;
+
+    // Helper to set up a correlation bus with a mock sub-bus, from given config string
+    struct TestSetup<M: MessageBounds> {
+        mock: Arc<MockBus<M>>,
+        bus: Arc<dyn MessageBus<M>>
+    }
+
+    impl<M: MessageBounds> TestSetup<M> {
+
+        fn new(config_str: &str) -> Self {
+
+            // Set up tracing
+            let _ = tracing_subscriber::fmt()
+                .with_max_level(Level::DEBUG)
+                .with_test_writer()
+                .try_init();
+
+            // Create mock bus
+            let mock = Arc::new(MockBus::<M>::new());
+
+            // Parse config
+            let config = Config::builder()
+                .add_source(config::File::from_str(config_str, FileFormat::Toml))
+                .build()
+                .unwrap();
+
+            // Create the bus
+            let bus = Arc::new(CorrelationBus::<M>::new(&config, mock.clone()));
+
+            Self { mock, bus }
+        }
+    }
+
+    #[tokio::test]
+    async fn publish_passes_straight_through() {
+        let setup = TestSetup::<String>::new("");
+
+        // Send a message
+        assert!(setup.bus.publish("test", Arc::new("Hello, world!".to_string())).await.is_ok());
+
+        // Check the mock got it
+        let mock_publishes = setup.mock.publishes.lock().await;
+        assert_eq!(mock_publishes.len(), 1);
+        let pub0 = &mock_publishes[0];
+        assert_eq!(pub0.topic, "test");
+        assert_eq!(pub0.message.as_ref(), "Hello, world!");
+    }
+
+    #[tokio::test]
+    async fn subscribe_passes_straight_through() {
+        let setup = TestSetup::<String>::new("");
+
+        // Subscribe
+        assert!(setup.bus.register_subscriber("test",
+                                              Arc::new(|_topic: &str, _message: Arc<String>| {
+                                                  Box::pin(ready(()))
+                                              }))
+                .await
+                .is_ok());
+
+        // Check the mock got it
+        let mock_subscribes = setup.mock.subscribes.lock().await;
+        assert_eq!(mock_subscribes.len(), 1);
+        let sub0 = &mock_subscribes[0];
+        assert_eq!(sub0.topic, "test");
+    }
+
+    #[tokio::test]
+    async fn request_succeeds_with_response() {
+        let setup = TestSetup::<String>::new("timeout = 1");
+
+        // Register a handler on test
+        assert!(setup.bus.handle("test", |message: Arc<String>| {
+            info!("Subscriber got request {message}");
+            ready(Arc::new("Nice to meet you".to_string()))
+        }).is_ok());
+
+        // Wait for responder to be ready
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Request with no response should timeout
+        assert!(setup.bus.request("test", Arc::new("Hello, world!".to_string()))
+                .await
+                .is_ok());
+    }
+
+    #[tokio::test]
+    async fn request_times_out_with_no_response() {
+        let setup = TestSetup::<String>::new("timeout = 1");
+
+        // Request with no response should timeout
+        assert!(setup.bus.request("test", Arc::new("Hello, world!".to_string()))
+                .await
+                .is_err());
+    }
+
+    #[tokio::test]
+    async fn shutdown_is_passed_to_sub_bus() {
+        let setup = TestSetup::<String>::new("");
+
+        // Shut it down
+        assert!(setup.bus.shutdown().await.is_ok());
+
+        // Check the mock got it
+        assert_eq!(*setup.mock.shutdowns.lock().await, 1);
+    }
+}

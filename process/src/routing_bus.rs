@@ -165,6 +165,8 @@ mod tests {
     use crate::mock_bus::MockBus;
     use config::{Config, FileFormat};
     use futures::future::ready;
+    use tracing::Level;
+    use tracing_subscriber;
 
     // Helper to set up a routing bus with 2 mock sub-buses, from given config string
     struct TestSetup<M: MessageBounds> {
@@ -176,6 +178,12 @@ mod tests {
     impl<M: MessageBounds> TestSetup<M> {
 
         fn new(config_str: &str) -> Self {
+
+            // Set up tracing
+            let _ = tracing_subscriber::fmt()
+                .with_max_level(Level::DEBUG)
+                .with_test_writer()
+                .try_init();
 
             // Create mock buses
             let mock_foo = Arc::new(MockBus::<M>::new());
@@ -229,13 +237,13 @@ bus = ["foo", "bar"]
         let foo_subscribes = setup.mock_foo.subscribes.lock().await;
         assert_eq!(foo_subscribes.len(), 1);
         let foo_0 = &foo_subscribes[0];
-        assert_eq!(foo_0, "test");
+        assert_eq!(foo_0.topic, "test");
 
         // Check bar got it
         let bar_subscribes = setup.mock_bar.subscribes.lock().await;
         assert_eq!(bar_subscribes.len(), 1);
         let bar_0 = &bar_subscribes[0];
-        assert_eq!(bar_0, "test");
+        assert_eq!(bar_0.topic, "test");
     }
 
     #[tokio::test]
@@ -261,7 +269,7 @@ bus = "foo"
         let foo_subscribes = setup.mock_foo.subscribes.lock().await;
         assert_eq!(foo_subscribes.len(), 1);
         let foo_0 = &foo_subscribes[0];
-        assert_eq!(foo_0, "test");
+        assert_eq!(foo_0.topic, "test");
 
         // Check bar didn't get it
         let bar_subscribes = setup.mock_bar.subscribes.lock().await;
