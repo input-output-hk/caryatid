@@ -1,7 +1,7 @@
 //! Mock message bus for tests
 use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
 use std::sync::Arc;
-use futures::future::{ready, BoxFuture};
+use futures::future::BoxFuture;
 use anyhow::Result;
 use tokio::sync::Mutex;
 
@@ -15,6 +15,7 @@ pub struct PublishRecord<M: MessageBounds> {
 pub struct MockBus<M: MessageBounds> {
     pub publishes: Arc<Mutex<Vec<PublishRecord<M>>>>,
     pub subscribes: Arc<Mutex<Vec<String>>>,  // topics
+    pub shutdowns: Arc<Mutex<u16>>,           // just count them
 }
 
 impl<M: MessageBounds> MockBus<M> {
@@ -22,6 +23,7 @@ impl<M: MessageBounds> MockBus<M> {
         Self {
             publishes: Arc::new(Mutex::new(Vec::new())),
             subscribes: Arc::new(Mutex::new(Vec::new())),
+            shutdowns: Arc::new(Mutex::new(0)),
         }
     }
 }
@@ -54,7 +56,12 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
     }
 
     fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
-        Box::pin(ready(Ok(())))
+        let shutdowns = self.shutdowns.clone();
+        Box::pin(async move {
+            let mut shutdowns = shutdowns.lock().await;
+            *shutdowns += 1;
+            Ok(())
+        })
     }
 }
 

@@ -327,4 +327,17 @@ bus = ["foo", "bar"]
         assert_eq!(bar_publishes.len(), 0);
     }
 
+    #[tokio::test]
+    async fn shutdown_is_passed_to_both_sub_buses() {
+        let setup = TestSetup::<String>::new("");
+
+        // Shut it down
+        assert!(setup.bus.shutdown().await.is_ok());
+
+        // Check foo got it
+        assert_eq!(*setup.mock_foo.shutdowns.lock().await, 1);
+
+        // Check bar got it
+        assert_eq!(*setup.mock_bar.shutdowns.lock().await, 1);
+    }
 }
