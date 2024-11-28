@@ -167,7 +167,7 @@ impl<M> MessageBus<M> for CorrelationBus<M>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock_bus::MockBus;
+    use caryatid_sdk::mock_bus::MockBus;
     use config::{Config, FileFormat};
     use futures::future::ready;
     use caryatid_sdk::MessageBusExt;

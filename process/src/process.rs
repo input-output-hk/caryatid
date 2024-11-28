@@ -22,12 +22,6 @@ use routing_bus::{RoutingBus, BusInfo};
 mod correlation_bus;
 use correlation_bus::CorrelationBus;
 
-mod match_topic;
-
-// Test-only modules
-#[cfg(test)]
-mod mock_bus;
-
 /// Main Process structure
 pub struct Process<M: MessageBounds> {
     /// Global configuration

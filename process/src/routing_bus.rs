@@ -4,9 +4,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use futures::future::BoxFuture;
-use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
 use tracing::{info, error};
-use crate::match_topic::match_topic;
+use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
+use caryatid_sdk::match_topic::match_topic;
 use caryatid_sdk::config::config_from_value;
 use std::collections::BTreeMap;
 
@@ -162,7 +162,7 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock_bus::MockBus;
+    use caryatid_sdk::mock_bus::MockBus;
     use config::{Config, FileFormat};
     use futures::future::ready;
     use tracing::Level;

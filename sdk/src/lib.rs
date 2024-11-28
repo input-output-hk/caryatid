@@ -5,6 +5,8 @@ pub mod module;
 pub mod module_registry;
 pub mod config;
 pub mod messages;
+pub mod match_topic;
+pub mod mock_bus;
 
 // Flattened re-exports
 pub use caryatid_macros::module;

@@ -1,25 +1,22 @@
 //! Mock message bus for tests
-use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
 use std::sync::Arc;
 use futures::future::BoxFuture;
 use anyhow::Result;
 use tokio::sync::Mutex;
-use crate::match_topic::match_topic;
 use tracing::debug;
+use crate::message_bus::{MessageBus, Subscriber, MessageBounds};
+use crate::match_topic::match_topic;
 
-#[cfg(test)]
 pub struct PublishRecord<M: MessageBounds> {
     pub topic: String,
     pub message: Arc<M>
 }
 
-#[cfg(test)]
 pub struct SubscribeRecord<M: MessageBounds> {
     pub topic: String,
     pub subscriber: Arc<Subscriber<M>>,
 }
 
-#[cfg(test)]
 pub struct MockBus<M: MessageBounds> {
     pub publishes: Arc<Mutex<Vec<PublishRecord<M>>>>,
     pub subscribes: Arc<Mutex<Vec<SubscribeRecord<M>>>>,

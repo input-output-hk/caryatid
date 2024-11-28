@@ -84,6 +84,7 @@ mod tests {
         assert!(match_topic("foo.bar.#", "foo.bar.baz"));
         assert!(match_topic("foo.#.baz", "foo.bar.baz"));
         assert!(match_topic("#.baz", "foo.bar.baz"));
+        assert!(!match_topic("#.splat", "foo.bar.baz"));
         assert!(!match_topic("foo.bar.baz#", "foo.bar.baz"));
     }
 

@@ -3,11 +3,10 @@ use tokio::sync::{mpsc, Mutex};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
-use tracing::error;
+use tracing::{info, error};
 use futures::future::BoxFuture;
 use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
-use tracing::info;
-use crate::match_topic::match_topic;
+use caryatid_sdk::match_topic::match_topic;
 
 const DEFAULT_WORKERS: i64 = 4;
 
