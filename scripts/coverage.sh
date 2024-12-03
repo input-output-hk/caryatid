@@ -3,5 +3,5 @@
 set -e
 cargo install cargo-tarpaulin
 
-# Exclude file from debug/oid-registry which is randomly included!
-cargo tarpaulin --target-dir target/tarpaulin --skip-clean --workspace --exclude-files  target/debug/*/*/*/* "$@"
+# Exclude all target fles, examples and caryatid_macros
+cargo tarpaulin --target-dir target/tarpaulin --skip-clean --workspace --lib --exclude caryatid_macros --exclude-files "target/**" --exclude-files "examples/**" "$@"
