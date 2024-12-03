@@ -4,6 +4,9 @@
 name = "caryatid-macros"
 version = "0.1.0"
 edition = "2021"
+authors = ["Paul Clark <paul.clark@iohk.io>"]
+description = "Procedural macros for the Caryatid framework module SDK"
+license = "Apache-2.0"
 
 [lib]
 proc-macro = true

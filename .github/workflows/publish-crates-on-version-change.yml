@@ -1,0 +1,71 @@
+name: Publish crates on version change on push to main
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Publish crates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Publish caryatid_macros if version changed
+        run: |
+          current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_macros").version')
+          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_macros | jq -r '.crate.max_version')
+
+          echo "Current Version (caryatid_macros): $current_version"
+          echo "Published Version (caryatid_macros): $published_version"
+
+          if [ "$current_version" != "$published_version" ]; then
+            echo "Version changed. Publishing caryatid_macros..."
+            cargo publish --manifest-path=macros/Cargo.toml
+          else
+            echo "No version change detected for caryatid_macros."
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish caryatid_sdk if version changed
+        run: |
+          current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_sdk").version')
+          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_sdk | jq -r '.crate.max_version')
+
+          echo "Current Version (caryatid_sdk): $current_version"
+          echo "Published Version (caryatid_sdk): $published_version"
+
+          if [ "$current_version" != "$published_version" ]; then
+            echo "Version changed. Publishing caryatid_sdk..."
+            cargo publish --manifest-path=sdk/Cargo.toml
+          else
+            echo "No version change detected for caryatid_sdk."
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish caryatid_process if version changed
+        run: |
+          current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_process").version')
+          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_process | jq -r '.crate.max_version')
+
+          echo "Current Version (caryatid_process): $current_version"
+          echo "Published Version (caryatid_process): $published_version"
+
+          if [ "$current_version" != "$published_version" ]; then
+            echo "Version changed. Publishing caryatid_process..."
+            cargo publish --manifest-path=process/Cargo.toml
+          else
+            echo "No version change detected for caryatid_process."
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

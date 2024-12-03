@@ -4,10 +4,11 @@ name = "caryatid_process"
 version = "0.1.0"
 edition = "2021"
 authors = ["Paul Clark <paul.clark@iohk.io>"]
-description = "Caryatid process"
+description = "Library for building a Caryatid process"
+license = "Apache-2.0"
 
 [dependencies]
-caryatid_sdk = { path = "../sdk" }
+caryatid_sdk = { version="0.1", path = "../sdk" }
 futures = "0.3"
 anyhow = "1.0"
 tokio = { version = "1", features = ["full"] }
