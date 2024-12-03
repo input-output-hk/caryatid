@@ -29,7 +29,7 @@ jobs:
 
           if [ "$current_version" != "$published_version" ]; then
             echo "Version changed. Publishing caryatid_macros..."
-            cargo publish --manifest-path=macros/Cargo.toml
+            cargo publish --manifest-path=sdk/macros/Cargo.toml
           else
             echo "No version change detected for caryatid_macros."
           fi

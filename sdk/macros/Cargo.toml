@@ -1,7 +1,7 @@
 # Macros for defining Caryatid modules
 
 [package]
-name = "caryatid-macros"
+name = "caryatid_macros"
 version = "0.1.0"
 edition = "2021"
 authors = ["Paul Clark <paul.clark@iohk.io>"]
