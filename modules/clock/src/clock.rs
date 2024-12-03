@@ -11,6 +11,8 @@ use tokio::time::{interval_at, Duration, Instant};
 use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 
+const DEFAULT_TOPIC: &str = "clock.tick";
+
 /// Clock module
 /// Parameterised by the outer message enum used on the bus
 #[module(
@@ -22,8 +24,9 @@ pub struct Clock<M: From<ClockTickMessage> + MessageBounds>;
 
 impl<M: From<ClockTickMessage> + MessageBounds> Clock<M>
 {
-    fn init(&self, context: Arc<Context<M>>, _config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
+        let topic = config.get_string("topic").unwrap_or(DEFAULT_TOPIC.to_string());
 
         tokio::spawn(async move {
             let start_instant = Instant::now();
@@ -41,8 +44,7 @@ impl<M: From<ClockTickMessage> + MessageBounds> Clock<M>
                     + scheduled_instant.duration_since(start_instant);
 
                 // Convert to a chrono DateTime<Utc>
-                let datetime: DateTime<Utc> =
-                    DateTime::<Utc>::from(wall_clock);
+                let datetime = DateTime::<Utc>::from(wall_clock);
 
                 // Construct message
                 let message = ClockTickMessage {
@@ -53,7 +55,7 @@ impl<M: From<ClockTickMessage> + MessageBounds> Clock<M>
                 debug!("Clock sending {:?}", message);
 
                 let message_enum: M = message.into();  // 'Promote' to outer enum
-                message_bus.publish("clock.tick", Arc::new(message_enum))
+                message_bus.publish(&topic, Arc::new(message_enum))
                     .await
                     .unwrap_or_else(|e| error!("Failed to publish: {e}"));
 
@@ -70,9 +72,12 @@ impl<M: From<ClockTickMessage> + MessageBounds> Clock<M>
 mod tests {
     use super::*;
     use config::{Config, FileFormat};
+    use caryatid_sdk::{MessageBus, MessageBusExt};
     use caryatid_sdk::mock_bus::MockBus;
     use tracing::Level;
     use tracing_subscriber;
+    use tokio::sync::{Notify, mpsc};
+    use tokio::time::{timeout, Duration};
 
     // Message type which includes a ClockTickMessage
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -95,7 +100,7 @@ mod tests {
 
     // Helper to create a clock talking to a mock message bus
     struct TestSetup {
-        mock: Arc<MockBus<Message>>,
+        bus: Arc<dyn MessageBus<Message>>,
         module: Arc<dyn Module<Message>>
     }
 
@@ -110,7 +115,7 @@ mod tests {
                 .try_init();
 
             // Create mock bus
-            let mock = Arc::new(MockBus::<Message>::new());
+            let bus = Arc::new(MockBus::<Message>::new());
 
             // Parse config
             let config = Arc::new(Config::builder()
@@ -119,7 +124,7 @@ mod tests {
                 .unwrap());
 
             // Create a context
-            let context = Arc::new(Context::new(config.clone(), mock.clone()));
+            let context = Arc::new(Context::new(config.clone(), bus.clone()));
 
             // Create the clock
             let clock = Clock::<Message>{
@@ -127,7 +132,7 @@ mod tests {
             };
             assert!(clock.init(context, config).is_ok());
 
-            Self { mock, module: Arc::new(clock) }
+            Self { bus, module: Arc::new(clock) }
         }
     }
 
@@ -137,4 +142,78 @@ mod tests {
         assert_eq!(setup.module.get_name(), "clock");
         assert_eq!(setup.module.get_description(), "System clock");
     }
+
+    #[tokio::test]
+    async fn clock_sends_tick_messages() {
+        let setup = TestSetup::new("");
+        let notify = Arc::new(Notify::new());
+
+        // Register for clock.tick
+        let notify_clone = notify.clone();
+        assert!(setup.bus.subscribe("clock.tick", move |_message: Arc<Message>| {
+            notify_clone.notify_one();
+        }).is_ok());
+
+        // Wait for it to be received, or timeout
+        assert!(timeout(Duration::from_secs(1), notify.notified()).await.is_ok(),
+                "Didn't receive a clock.tick message");
+
+        // Wait for another one
+        assert!(timeout(Duration::from_secs(2), notify.notified()).await.is_ok(),
+                "Didn't receive a second clock.tick message");
+    }
+
+    #[tokio::test]
+    async fn clock_messages_have_increasing_times_and_ticks() {
+        let setup = TestSetup::new("topic = 'tick'"); // Also test configured topic
+        let (tx, mut rx) = mpsc::channel(10);
+
+        // Register for tick
+        assert!(setup.bus.subscribe("tick", move |message: Arc<Message>| {
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let _ = tx.send(message).await;
+            });
+        }).is_ok());
+
+        // Wait for the first message
+        let first_res = timeout(Duration::from_secs(1), rx.recv()).await;
+        assert!(first_res.is_ok(), "Didn't receive the first tick message");
+
+        let first_message = first_res.unwrap();
+        assert!(first_message.is_some(), "First message was None");
+
+        // Extract and verify the type of the first message
+        let first_clock = match first_message.unwrap().as_ref() {
+            Message::Clock(clock) => clock.clone(),
+            _ => panic!("First message was not a ClockTickMessage"),
+        };
+
+        // Wait for the second message
+        let second_res = timeout(Duration::from_secs(2), rx.recv()).await;
+        assert!(second_res.is_ok(), "Didn't receive the second tick message");
+
+        let second_message = second_res.unwrap();
+        assert!(second_message.is_some(), "Second message was None");
+
+        // Extract and verify the type of the second message
+        let second_clock = match second_message.unwrap().as_ref() {
+            Message::Clock(clock) => clock.clone(),
+            _ => panic!("Second message was not a ClockTickMessage"),
+        };
+
+        // Compare the timestamps
+        let duration = (second_clock.time - first_clock.time).num_milliseconds();
+        assert!(
+            (900..=1100).contains(&duration),
+            "Clock tick interval was out of range: {} ms",
+            duration
+        );
+
+        // Compare the numbers
+        assert!(
+            second_clock.number == first_clock.number+1,
+            "Second tick number was not incremented from the first"
+        );
+   }
 }
