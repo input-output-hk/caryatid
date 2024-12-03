@@ -1,0 +1,26 @@
+name: Run test coverage report on push to main
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Test coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Run coverage script
+        run: ./scripts/coverage.sh
