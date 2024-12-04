@@ -18,6 +18,11 @@ caryatid_macros = { version="0.1", path = "macros" }
 tracing = "0.1.40"
 serde = { version = "1.0.214", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8.5"
+hex = "0.4.3"
+
+[dev-dependencies]
+tracing-subscriber = "0.3.19"
 
 [lib]
 crate-type = ["rlib"]

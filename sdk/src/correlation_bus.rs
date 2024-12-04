@@ -6,7 +6,7 @@ use tokio::sync::oneshot::Sender;
 use anyhow::{Result, anyhow};
 use config::Config;
 use futures::future::{BoxFuture, ready};
-use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
+use crate::message_bus::{MessageBus, Subscriber, MessageBounds};
 use tracing::{debug, info, error};
 use std::collections::{HashSet, HashMap};
 use rand::Rng;
@@ -167,10 +167,10 @@ impl<M> MessageBus<M> for CorrelationBus<M>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caryatid_sdk::mock_bus::MockBus;
+    use crate::mock_bus::MockBus;
     use config::{Config, FileFormat};
     use futures::future::ready;
-    use caryatid_sdk::MessageBusExt;
+    use crate::MessageBusExt;
     use tracing::Level;
     use tracing_subscriber;
 

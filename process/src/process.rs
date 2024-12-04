@@ -3,6 +3,7 @@
 
 use caryatid_sdk::{Context, MessageBus, Module, MessageBounds, ModuleRegistry};
 use caryatid_sdk::config::{get_sub_config, config_from_value};
+use caryatid_sdk::correlation_bus::CorrelationBus;
 use anyhow::{Result, anyhow};
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -18,9 +19,6 @@ use rabbit_mq_bus::RabbitMQBus;
 
 mod routing_bus;
 use routing_bus::{RoutingBus, BusInfo};
-
-mod correlation_bus;
-use correlation_bus::CorrelationBus;
 
 /// Main Process structure
 pub struct Process<M: MessageBounds> {
