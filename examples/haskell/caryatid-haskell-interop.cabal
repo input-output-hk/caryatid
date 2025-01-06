@@ -14,7 +14,7 @@ common warnings
 executable caryatid-haskell-interop
     import:           warnings
     main-is:          Main.hs
-    build-depends:    base ^>=4.14.3.0,
+    build-depends:    base,
                       amqp >=0.18.1,
                       cborg >=0.2.0.0,
                       bytestring,
