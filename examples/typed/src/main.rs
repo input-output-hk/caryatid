@@ -19,8 +19,8 @@ use publisher::Publisher;
 mod message;
 
 // External modules
-extern crate clock;
-use clock::Clock;
+extern crate caryatid_module_clock;
+use caryatid_module_clock::Clock;
 
 /// Standard main
 #[tokio::main]

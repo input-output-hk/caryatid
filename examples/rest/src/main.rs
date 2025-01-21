@@ -15,8 +15,8 @@ mod message;
 use message::Message;
 
 // External modules
-extern crate rest_server;
-use rest_server::RESTServer;
+extern crate caryatid_module_rest_server;
+use caryatid_module_rest_server::RESTServer;
 
 
 /// Standard main

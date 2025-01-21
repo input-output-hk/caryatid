@@ -1,7 +1,7 @@
 # Caryatid REST server module
 
 [package]
-name = "rest_server"
+name = "caryatid_module_rest_server"
 version = "0.1.0"
 edition = "2021"
 

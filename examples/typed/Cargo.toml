@@ -14,7 +14,7 @@ caryatid_process = { path = "../../process" }
 caryatid_sdk = { path = "../../sdk" }
 
 # External modules
-clock = { path = "../../modules/clock" }
+caryatid_module_clock = { path = "../../modules/clock" }
 
 anyhow = "1.0"
 config = "0.14.0"
