@@ -4,6 +4,9 @@
 name = "caryatid_module_clock"
 version = "0.1.0"
 edition = "2021"
+authors = ["Paul Clark <paul.clark@iohk.io>"]
+description = "Clock module for Caryatid"
+license = "Apache-2.0"
 
 [dependencies]
 caryatid_sdk = { version="0.1.0", path = "../../sdk" }
