@@ -27,7 +27,7 @@ impl Subscriber {
 
         // Register a subscriber on the message bus to listen for messages
         // Message is an enum of all possible messages
-        context.message_bus.subscribe(&topic, |message: Arc<Message>| {
+        context.message_bus.subscribe(&topic, |message: Arc<Message>| async move {
             match message.as_ref()
             {
                 Message::None(_) => error!("Received empty message!"),
@@ -39,7 +39,7 @@ impl Subscriber {
         })?;
 
         // Register for clock ticks too
-        context.message_bus.subscribe("clock.tick", |message: Arc<Message>| {
+        context.message_bus.subscribe("clock.tick", |message: Arc<Message>| async move {
             match message.as_ref() {
                 Message::Clock(message) => {
                     let localtime = message.time.with_timezone(&Local);

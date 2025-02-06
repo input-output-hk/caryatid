@@ -30,7 +30,7 @@ impl Subscriber {
         // Register a subscriber on the message bus to listen for messages
         // Messages are passed as JSON objects, in an Arc
         context.message_bus.subscribe(&topic,
-                                      |message: Arc<serde_json::Value>| {
+                                      |message: Arc<serde_json::Value>| async move {
            info!("Received: {:?}", message);
         })?;
 

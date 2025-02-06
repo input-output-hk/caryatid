@@ -40,10 +40,11 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
 /// Needed because MessageBus must be object-safe to be used dynamically,
 /// which means we can't accept closures through type parameters
 pub trait MessageBusExt<M: MessageBounds> {
-    /// Register a simple synchronous lambda/closure with no result
-    fn subscribe<F>(&self, topic: &str, subscriber: F) -> Result<()>
+    /// Register a simple asynchronous lambda/closure with no result
+    fn subscribe<F, Fut>(&self, topic: &str, subscriber: F) -> Result<()>
     where
-        F: Fn(Arc<M>) + Send + Sync + 'static;
+        F: Fn(Arc<M>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static;
 
     /// Register a handler function which returns a future for
     /// the result.  They must return an M, not a Result, because
@@ -56,18 +57,18 @@ pub trait MessageBusExt<M: MessageBounds> {
 
 impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
 
-    fn subscribe<F>(&self, topic: &str, subscriber: F) -> Result<()>
+    fn subscribe<F, Fut>(&self, topic: &str, subscriber: F) -> Result<()>
     where
-        F: Fn(Arc<M>) + Send + Sync + 'static
-    {
+        F: Fn(Arc<M>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static
+     {
         let arc_self = self.clone();
         let topic = topic.to_string();
 
         tokio::spawn(async move {
             let arc_subscriber: Arc<Subscriber<M>> =
                 Arc::new(move |_topic: &str, message: Arc<M>| {
-                    subscriber(message);
-                    Box::pin(ready(()))
+                    Box::pin(subscriber(message))
                 });
 
             arc_self.register_subscriber(&topic, arc_subscriber).await
