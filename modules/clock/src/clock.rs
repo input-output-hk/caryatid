@@ -151,7 +151,10 @@ mod tests {
         // Register for clock.tick
         let notify_clone = notify.clone();
         assert!(setup.bus.subscribe("clock.tick", move |_message: Arc<Message>| {
-            notify_clone.notify_one();
+            let notify_clone = notify_clone.clone();
+            async move {
+                notify_clone.notify_one();
+            }
         }).is_ok());
 
         // Wait for it to be received, or timeout
@@ -171,9 +174,9 @@ mod tests {
         // Register for tick
         assert!(setup.bus.subscribe("tick", move |message: Arc<Message>| {
             let tx = tx.clone();
-            tokio::spawn(async move {
+            async move {
                 let _ = tx.send(message).await;
-            });
+            }
         }).is_ok());
 
         // Wait for the first message
