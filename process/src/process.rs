@@ -133,6 +133,13 @@ impl<M: MessageBounds> Process<M> {
 
         info!("Running...");
 
+        // Send startup message if required
+        if let Ok(topic) = self.config.get_string("startup.topic") {
+            self.context.message_bus.publish(&topic, Arc::new(M::default()))
+                .await
+                .unwrap_or_else(|e| error!("Failed to publish: {e}"));
+        }
+
         // Wait for SIGTERM
         let mut sigterm = signal(SignalKind::terminate())
             .expect("Can't set signal");
