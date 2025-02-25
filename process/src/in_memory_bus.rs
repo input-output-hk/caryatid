@@ -9,6 +9,8 @@ use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
 use caryatid_sdk::match_topic::match_topic;
 
 const DEFAULT_WORKERS: i64 = 4;
+const DEFAULT_DISPATCH_QUEUE_SIZE: i64 = 1000;
+const DEFAULT_WORKER_QUEUE_SIZE: i64 = 1000;
 
 /// Subscriber on a particular topic pattern
 struct PatternSubscriber<M: MessageBounds> {
@@ -30,9 +32,13 @@ impl<M: MessageBounds> InMemoryBus<M> {
     pub fn new(config: &Config) -> Self {
         let num_workers = config.get_int("workers")
             .unwrap_or(DEFAULT_WORKERS) as usize;
+        let dispatch_queue_size = config.get_int("dispatch-queue-size")
+            .unwrap_or(DEFAULT_DISPATCH_QUEUE_SIZE) as usize;
+        let worker_queue_size = config.get_int("worker-queue-size")
+            .unwrap_or(DEFAULT_WORKER_QUEUE_SIZE) as usize;
 
         let (sender, mut receiver) =
-            mpsc::channel::<(String, Arc<M>)>(100);
+            mpsc::channel::<(String, Arc<M>)>(dispatch_queue_size);
 
         info!("Creating in-memory message bus with {} workers", num_workers);
 
@@ -45,7 +51,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
             let (worker_tx, mut worker_rx) =
                 mpsc::channel::<(Arc<Subscriber<M>>,
                                  String,
-                                 Arc<M>)>(100);
+                                 Arc<M>)>(worker_queue_size);
             worker_txs.push(worker_tx);
 
             // Spawn worker tasks that handle individual subscriber invocations
