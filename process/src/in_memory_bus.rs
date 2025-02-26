@@ -68,19 +68,34 @@ impl<M: MessageBounds> InMemoryBus<M> {
             let mut round_robin_index = 0;
 
             while let Some((topic, message)) = receiver.recv().await {
-
                 // Lock the subscribers for the topic
                 let subscribers = subs_clone.lock().await;
                 for patsub in subscribers.iter() {
                     if match_topic(&patsub.pattern, &topic) {
-                        // For each subscriber, dispatch the task to a worker
-                        let worker_tx = &worker_txs[round_robin_index % num_workers];
 
-                        // Send the subscriber and the message to a worker
-                        if let Err(e) = worker_tx.send((patsub.subscriber.clone(),
-                                                        topic.clone(),
-                                                        message.clone())).await {
-                            error!("Failed to send message to worker: {}", e);
+                        // Loop in case worker queues are full
+                        for i in 0..num_workers+1 {  // ends with i=num_workers
+                            // Dispatch the task to a worker
+                            let worker_tx = &worker_txs[(round_robin_index+i) % num_workers];
+
+                            // Send the subscriber and the message to a worker
+                            let data = (patsub.subscriber.clone(), topic.clone(),
+                                        message.clone());
+
+                            // If we've looped right round then they're all full -
+                            // just block on the first one
+                            if i == num_workers {
+                                if let Err(e) = worker_tx.send(data).await {
+                                    error!("Failed to send message to worker: {}", e);
+                                }
+                            } else {
+                                // Try each one in turn, stop if it accepts it
+                                match worker_tx.try_send(data) {
+                                    Ok(_) => break,
+                                    Err(mpsc::error::TrySendError::Full(_)) => {},
+                                    Err(e) => error!("Failed to send message to worker: {e}")
+                                }
+                            }
                         }
 
                         round_robin_index += 1;
