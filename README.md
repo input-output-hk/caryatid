@@ -92,7 +92,8 @@ The code is structured as follows:
 * [`process`](./process): a library for building a microservice process.  Most of the implementation is in here.
 * [`modules`](./modules): standard modules likely to be useful across projects:
   * [`modules/clock`](./modules/clock): a simple once-per-second ticker / timebase
-  * [`modules/rest_server`](./modules/rest_server): REST server endpoint 
+  * [`modules/rest_server`](./modules/rest_server): REST server endpoint
+  * [`modules/spy`](./modules/spy): Message logging observer
 * [`examples`](./examples): simple example code demonstrating various features:
   * [`examples/simple`](./examples/simple): Simplest possible pub-sub with JSON
   * [`examples/typed`](./examples/typed): Pub-sub with typed messages

@@ -15,6 +15,7 @@ caryatid_sdk = { path = "../../sdk" }
 
 # External modules
 caryatid_module_clock = { path = "../../modules/clock" }
+caryatid_module_spy = { path = "../../modules/spy" }
 
 anyhow = "1.0"
 config = "0.14.0"

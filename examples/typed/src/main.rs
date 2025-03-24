@@ -22,6 +22,9 @@ mod message;
 extern crate caryatid_module_clock;
 use caryatid_module_clock::Clock;
 
+extern crate caryatid_module_spy;
+use caryatid_module_spy::Spy;
+
 /// Standard main
 #[tokio::main]
 pub async fn main() -> Result<()> {
@@ -45,6 +48,7 @@ pub async fn main() -> Result<()> {
     Subscriber::register(&mut process);
     Publisher::register(&mut process);
     Clock::<Message>::register(&mut process);
+    Spy::<Message>::register(&mut process);
 
     // Run it
     process.run().await?;

@@ -8,6 +8,7 @@ members = [
     # Core modules
     "modules/clock",        # System clock
     "modules/rest_server",  # REST server
+    "modules/spy",          # Message spy module
 
     # Examples
     "examples/simple",      # Sample process
@@ -15,9 +16,6 @@ members = [
     "examples/performance", # Performance test
     "examples/typed",       # Typed message test
     "examples/rest",        # REST server test
-
-    # Tools
-    "tools/spy",            # Message spy
 ]
 
 resolver = "2"

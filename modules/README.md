@@ -4,4 +4,5 @@ This directory holds standard modules for a Caryatid framework which could be us
 
 * [Clock](clock/) - a central clock providing an accurate tick event
 * [REST Server](rest_server/) - a REST service endpoint mapping HTTP requests onto message bus requests
+* [Spy](spy/) - a way to observe any message on the bus
 
