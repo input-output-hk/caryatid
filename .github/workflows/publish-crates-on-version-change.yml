@@ -103,3 +103,20 @@ jobs:
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish caryatid_module_spy if version changed
+        run: |
+          current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_module_spy").version')
+          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_module_spy | jq -r '.crate.max_version')
+
+          echo "Current Version (caryatid_module_spy): $current_version"
+          echo "Published Version (caryatid_module_spy): $published_version"
+
+          if [ "$current_version" != "$published_version" ]; then
+            echo "Version changed. Publishing caryatid_module_spy..."
+            cargo publish --manifest-path=modules/spy/Cargo.toml
+          else
+            echo "No version change detected for caryatid_module_spy."
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
