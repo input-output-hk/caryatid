@@ -3,7 +3,7 @@ use tokio::sync::{mpsc, Mutex};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
-use tracing::{info, error};
+use tracing::{info, error, debug};
 use futures::future::BoxFuture;
 use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
 use caryatid_sdk::match_topic::match_topic;
@@ -22,7 +22,7 @@ struct PatternSubscriber<M: MessageBounds> {
 pub struct InMemoryBus<M: MessageBounds> {
 
     /// Subscribers
-    subscribers: Arc<Mutex<Vec<PatternSubscriber<M>>>>,
+    subscribers: Arc<Mutex<Vec<Arc<PatternSubscriber<M>>>>>,
 
     /// Sender for received messages
     sender: mpsc::Sender<(String, Arc<M>)>,
@@ -42,7 +42,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
 
         info!("Creating in-memory message bus with {} workers", num_workers);
 
-        let subscribers: Arc<Mutex<Vec<PatternSubscriber<M>>>> =
+        let subscribers: Arc<Mutex<Vec<Arc<PatternSubscriber<M>>>>> =
             Arc::new(Mutex::new(Vec::new()));
 
         // Create a task queue channel for each worker
@@ -68,33 +68,40 @@ impl<M: MessageBounds> InMemoryBus<M> {
             let mut round_robin_index = 0;
 
             while let Some((topic, message)) = receiver.recv().await {
+
+                // Get matching subscribers, limiting lock duration
+                let matching: Vec<_> = {
+                    let subscribers = subs_clone.lock().await;
+                    subscribers.iter()
+                        .filter(|patsub| match_topic(&patsub.pattern, &topic))
+                        .map(Arc::clone)
+                        .collect()
+                };
+
                 // Lock the subscribers for the topic
-                let subscribers = subs_clone.lock().await;
-                for patsub in subscribers.iter() {
-                    if match_topic(&patsub.pattern, &topic) {
+                for patsub in matching {
+                    // Loop in case worker queues are full
+                    for i in 0..num_workers+1 {  // ends with i=num_workers
+                        // Dispatch the task to a worker
+                        let worker_tx = &worker_txs[(round_robin_index+i) % num_workers];
 
-                        // Loop in case worker queues are full
-                        for i in 0..num_workers+1 {  // ends with i=num_workers
-                            // Dispatch the task to a worker
-                            let worker_tx = &worker_txs[(round_robin_index+i) % num_workers];
+                        // Send the subscriber and the message to a worker
+                        let data = (patsub.subscriber.clone(), topic.clone(),
+                                    message.clone());
 
-                            // Send the subscriber and the message to a worker
-                            let data = (patsub.subscriber.clone(), topic.clone(),
-                                        message.clone());
-
-                            // If we've looped right round then they're all full -
-                            // just block on the first one
-                            if i == num_workers {
-                                if let Err(e) = worker_tx.send(data).await {
-                                    error!("Failed to send message to worker: {}", e);
-                                }
-                            } else {
-                                // Try each one in turn, stop if it accepts it
-                                match worker_tx.try_send(data) {
-                                    Ok(_) => break,
-                                    Err(mpsc::error::TrySendError::Full(_)) => {},
-                                    Err(e) => error!("Failed to send message to worker: {e}")
-                                }
+                        // If we've looped right round then they're all full -
+                        // just block on the first one
+                        if i == num_workers {
+                            debug!("All worker queues full - blocking");
+                            if let Err(e) = worker_tx.send(data).await {
+                                error!("Failed to send message to worker: {}", e);
+                            }
+                        } else {
+                            // Try each one in turn, stop if it accepts it
+                            match worker_tx.try_send(data) {
+                                Ok(_) => break,
+                                Err(mpsc::error::TrySendError::Full(_)) => {},
+                                Err(e) => error!("Failed to send message to worker: {e}")
                             }
                         }
 
@@ -130,10 +137,10 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
         let topic = topic.to_string();
         Box::pin(async move {
             let mut subscribers = subscribers.lock().await;
-            subscribers.push(PatternSubscriber {
+            subscribers.push(Arc::new(PatternSubscriber {
                 pattern: topic,
                 subscriber: subscriber
-            });
+            }));
             Ok(())
         })
     }

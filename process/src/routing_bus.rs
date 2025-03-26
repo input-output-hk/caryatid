@@ -28,7 +28,7 @@ pub struct RoutingBus<M: MessageBounds> {
     buses: Arc<Mutex<BTreeMap<String, Arc<dyn MessageBus<M>>>>>,
 
     /// Routes
-    routes: Arc<Mutex<Vec<Route<M>>>>,
+    routes: Arc<Mutex<Vec<Arc<Route<M>>>>>,
 }
 
 impl<M: MessageBounds> RoutingBus<M> {
@@ -45,7 +45,7 @@ impl<M: MessageBounds> RoutingBus<M> {
         }
 
         // Create routes
-        let mut routes: Vec<Route<M>> = Vec::new();
+        let mut routes: Vec<Arc<Route<M>>> = Vec::new();
         if let Ok(rconfs) = config.get_array("route") {
             for rconf in rconfs {
                 if let Ok(rt) = rconf.into_table() {
@@ -80,7 +80,7 @@ impl<M: MessageBounds> RoutingBus<M> {
                             }
                         }
 
-                        routes.push(route);
+                        routes.push(Arc::new(route));
                     }
                 }
             }
@@ -103,17 +103,21 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         let topic = topic.to_string();
 
         Box::pin(async move {
-            let routes = routes.lock().await;
-            let topic = topic.clone();
 
-            for route in routes.iter() {
-                // Check for topic match
-                if match_topic(&route.pattern, &topic) {
-                    for bus in route.buses.iter() {
-                        let _ = bus.publish(&topic, message.clone()).await;
-                    }
-                    break;  // Stop after match
+            // Get matching routes, limiting lock duration
+            let matching: Vec<_> = {
+                let routes = routes.lock().await;
+                routes.iter()
+                    .filter(|route| match_topic(&route.pattern, &topic))
+                    .map(Arc::clone)
+                    .collect()
+            };
+            
+            for route in matching {
+                for bus in route.buses.iter() {
+                    let _ = bus.publish(&topic, message.clone()).await;
                 }
+                break;  // Stop after match
             }
             Ok(())
         })
@@ -126,17 +130,22 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         let topic = topic.to_string();
 
         Box::pin(async move {
-            let routes = routes.lock().await;
 
-            for route in routes.iter() {
-                // Check for topic match
-                if match_topic(&route.pattern, &topic) {
-                    for bus in route.buses.iter() {
-                        let _ = bus.register_subscriber(&topic,
-                                                        subscriber.clone()).await;
-                    }
-                    break;  // Stop after match
+            // Get matching routes, limiting lock duration
+            let matching: Vec<_> = {
+                let routes = routes.lock().await;
+                routes.iter()
+                    .filter(|route| match_topic(&route.pattern, &topic))
+                    .map(Arc::clone)
+                    .collect()
+            };
+
+            for route in matching {
+                for bus in route.buses.iter() {
+                    let _ = bus.register_subscriber(&topic,
+                                                    subscriber.clone()).await;
                 }
+                break;  // Stop after match
             }
 
             Ok(())
