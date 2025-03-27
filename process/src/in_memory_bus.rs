@@ -52,8 +52,8 @@ impl<M: MessageBounds> InMemoryBus<M> {
         let (sender, mut receiver) =
             mpsc::channel::<(String, Arc<M>)>(dispatch_queue_size);
         let notify_space_for_bulk = Arc::new(Notify::new());
-        let bulk_resume_capacity = dispatch_queue_size * bulk_block_capacity_percent / 100;
-        let bulk_block_capacity = dispatch_queue_size * bulk_resume_capacity_percent / 100;
+        let bulk_resume_capacity = dispatch_queue_size * bulk_resume_capacity_percent / 100;
+        let bulk_block_capacity = dispatch_queue_size * bulk_block_capacity_percent / 100;
 
         info!("Creating in-memory message bus with {} workers", num_workers);
 
@@ -134,11 +134,11 @@ impl<M: MessageBounds> InMemoryBus<M> {
             }
         });
 
-        InMemoryBus { 
-            subscribers, 
-            sender, 
-            notify_space_for_bulk, 
-            bulk_block_capacity 
+        InMemoryBus {
+            subscribers,
+            sender,
+            notify_space_for_bulk,
+            bulk_block_capacity
         }
     }
 }
@@ -157,7 +157,9 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
         Box::pin(async move {
             // Hold up bulk sending if capacity below water mark
             if matches!(qos, QoS::Bulk) && sender.capacity() < bulk_block_capacity {
+                debug!("Bulk held at capacity {}", sender.capacity());
                 notify_space_for_bulk.notified().await;
+                debug!("Bulk released");
             }
 
             sender.send((topic, message)).await?;

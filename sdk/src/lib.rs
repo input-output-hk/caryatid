@@ -14,6 +14,7 @@ pub use caryatid_macros::module;
 pub use self::message_bus::MessageBounds;
 pub use self::message_bus::MessageBus;
 pub use self::message_bus::MessageBusExt;
+pub use self::message_bus::QoS;
 pub use self::context::Context;
 pub use self::module::Module;
 pub use self::module_registry::ModuleRegistry;
