@@ -34,6 +34,9 @@ pub struct InMemoryBus<M: MessageBounds> {
 
     /// Capacity at which to stop sending bulk
     bulk_block_capacity: usize,
+
+    /// Worker Tx, for counting capacity
+    worker_txs: Vec<mpsc::Sender<(Arc<Subscriber<M>>, String, Arc<M>)>>,
 }
 
 impl<M: MessageBounds> InMemoryBus<M> {
@@ -52,10 +55,14 @@ impl<M: MessageBounds> InMemoryBus<M> {
         let (sender, mut receiver) =
             mpsc::channel::<(String, Arc<M>)>(dispatch_queue_size);
         let notify_space_for_bulk = Arc::new(Notify::new());
-        let bulk_resume_capacity = dispatch_queue_size * bulk_resume_capacity_percent / 100;
-        let bulk_block_capacity = dispatch_queue_size * bulk_block_capacity_percent / 100;
 
-        info!("Creating in-memory message bus with {} workers", num_workers);
+        // Work out the capacity thresholds
+        let total_capacity = dispatch_queue_size + num_workers * worker_queue_size;
+        let bulk_resume_capacity = total_capacity * bulk_resume_capacity_percent / 100;
+        let bulk_block_capacity = total_capacity * bulk_block_capacity_percent / 100;
+
+        info!("Creating in-memory message bus with {} workers, total capacity {}", 
+            num_workers, total_capacity);
 
         let subscribers: Arc<Mutex<Vec<Arc<PatternSubscriber<M>>>>> =
             Arc::new(Mutex::new(Vec::new()));
@@ -81,6 +88,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
         let subs_clone = subscribers.clone();
         let notify_clone = notify_space_for_bulk.clone();
         let sender_clone = sender.clone();
+        let workers = worker_txs.clone();
         tokio::spawn(async move {
             let mut round_robin_index = 0;
 
@@ -100,7 +108,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
                     // Loop in case worker queues are full
                     for i in 0..num_workers+1 {  // ends with i=num_workers
                         // Dispatch the task to a worker
-                        let worker_tx = &worker_txs[(round_robin_index+i) % num_workers];
+                        let worker_tx = &workers[(round_robin_index+i) % num_workers];
 
                         // Send the subscriber and the message to a worker
                         let data = (patsub.subscriber.clone(), topic.clone(),
@@ -109,7 +117,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
                         // If we've looped right round then they're all full -
                         // just block on the first one
                         if i == num_workers {
-                            debug!("All worker queues full - blocking");
+                            debug!("All worker queues full - blocking {topic}");
                             if let Err(e) = worker_tx.send(data).await {
                                 error!("Failed to send message to worker: {}", e);
                             }
@@ -128,7 +136,9 @@ impl<M: MessageBounds> InMemoryBus<M> {
                 }
 
                 // Notify space for bulk if there is enough
-                if sender_clone.capacity() >= bulk_resume_capacity {
+                let capacity = sender_clone.capacity() 
+                    + workers.iter().map(|s| s.capacity()).sum::<usize>();
+                if capacity >= bulk_resume_capacity {
                     notify_clone.notify_waiters();
                 }
             }
@@ -138,7 +148,8 @@ impl<M: MessageBounds> InMemoryBus<M> {
             subscribers,
             sender,
             notify_space_for_bulk,
-            bulk_block_capacity
+            bulk_block_capacity,
+            worker_txs
         }
     }
 }
@@ -153,13 +164,15 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
         let message = message.clone();
         let notify_space_for_bulk = self.notify_space_for_bulk.clone();
         let bulk_block_capacity = self.bulk_block_capacity;
+        let capacity = self.sender.capacity() 
+            + self.worker_txs.iter().map(|s| s.capacity()).sum::<usize>();
 
         Box::pin(async move {
             // Hold up bulk sending if capacity below water mark
-            if matches!(qos, QoS::Bulk) && sender.capacity() < bulk_block_capacity {
-                debug!("Bulk held at capacity {}", sender.capacity());
+            if matches!(qos, QoS::Bulk) && capacity < bulk_block_capacity {
+                debug!("Bulk {topic} held at capacity {}", capacity);
                 notify_space_for_bulk.notified().await;
-                debug!("Bulk released");
+                debug!("Bulk {topic} released");
             }
 
             sender.send((topic, message)).await?;
