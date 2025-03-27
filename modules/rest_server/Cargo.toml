@@ -2,7 +2,7 @@
 
 [package]
 name = "caryatid_module_rest_server"
-version = "0.2.0"
+version = "0.2.5"
 edition = "2021"
 authors = ["Paul Clark <paul.clark@iohk.io>"]
 description = "REST server module for Caryatid"
