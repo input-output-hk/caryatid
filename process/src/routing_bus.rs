@@ -5,7 +5,7 @@ use anyhow::Result;
 use config::Config;
 use futures::future::BoxFuture;
 use tracing::{info, error};
-use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
+use caryatid_sdk::message_bus::{MessageBounds, MessageBus, QoS, Subscriber};
 use caryatid_sdk::match_topic::match_topic;
 use caryatid_sdk::config::config_from_value;
 use std::collections::BTreeMap;
@@ -97,7 +97,8 @@ impl<M> MessageBus<M> for RoutingBus<M>
 where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
 
     /// Publish a message on a given topic
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
+    fn publish_with_qos(&self, topic: &str, message: Arc<M>, qos: QoS) 
+        -> BoxFuture<'static, Result<()>> {
 
         let routes = self.routes.clone();
         let topic = topic.to_string();
@@ -112,10 +113,10 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
                     .map(Arc::clone)
                     .collect()
             };
-            
+
             for route in matching {
                 for bus in route.buses.iter() {
-                    let _ = bus.publish(&topic, message.clone()).await;
+                    let _ = bus.publish_with_qos(&topic, message.clone(), qos).await;
                 }
                 break;  // Stop after match
             }

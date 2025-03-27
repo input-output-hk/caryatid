@@ -8,6 +8,13 @@ use tracing::error;
 pub type Subscriber<M> = dyn Fn(&str, Arc<M>) ->
     BoxFuture<'static, ()> + Send + Sync + 'static;
 
+/// Message quality-of-service
+#[derive(Clone, Copy)]
+pub enum QoS {
+    Normal,       // Normal messages generated one at a time
+    Bulk,         // Messages generated quickly in large volumes
+}
+
 /// Message bounds trait (awaiting trait aliases)
 pub trait MessageBounds: Send + Sync + Clone + Default +
     serde::Serialize + serde::de::DeserializeOwned + 'static {}
@@ -17,9 +24,15 @@ impl<T: Send + Sync + Clone + Default + serde::Serialize +
 /// Generic MessageBus trait
 pub trait MessageBus<M: MessageBounds>: Send + Sync {
 
-    /// Publish a message - note async but not defined as such because this
-    /// is used dynamically
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>>;
+    /// Publish a message with normal QoS
+    /// Note async but not defined as such because this is used dynamically
+    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
+        self.publish_with_qos(topic, message, QoS::Normal)
+    }
+
+    /// Publish a message with given QoS
+    fn publish_with_qos(&self, topic: &str, message: Arc<M>, qos: QoS) 
+        -> BoxFuture<'static, Result<()>>;
 
     /// Request/response - as publish() but returns a result
     /// Note only implemented in CorrelationBus

@@ -4,7 +4,7 @@ use futures::future::BoxFuture;
 use anyhow::Result;
 use tokio::sync::Mutex;
 use tracing::debug;
-use crate::message_bus::{MessageBus, Subscriber, MessageBounds};
+use crate::message_bus::{MessageBus, Subscriber, MessageBounds, QoS};
 use crate::match_topic::match_topic;
 
 pub struct PublishRecord<M: MessageBounds> {
@@ -36,7 +36,8 @@ impl<M: MessageBounds> MockBus<M> {
 impl<M> MessageBus<M> for MockBus<M>
 where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
 
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
+    fn publish_with_qos(&self, topic: &str, message: Arc<M>, _qos: QoS) 
+        -> BoxFuture<'static, Result<()>> {
 
         debug!("Mock publish on {topic}");
         let publishes = self.publishes.clone();

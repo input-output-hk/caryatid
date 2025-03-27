@@ -1,16 +1,18 @@
 // In-memory pub-sub bus with multi-threaded async workers
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex, Notify};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use tracing::{info, error, debug};
 use futures::future::BoxFuture;
-use caryatid_sdk::message_bus::{MessageBus, Subscriber, MessageBounds};
+use caryatid_sdk::message_bus::{MessageBounds, MessageBus, QoS, Subscriber};
 use caryatid_sdk::match_topic::match_topic;
 
 const DEFAULT_WORKERS: i64 = 4;
 const DEFAULT_DISPATCH_QUEUE_SIZE: i64 = 1000;
 const DEFAULT_WORKER_QUEUE_SIZE: i64 = 1000;
+const DEFAULT_BULK_BLOCK_CAPACITY: i64 = 50;
+const DEFAULT_BULK_RESUME_CAPACITY: i64 = 75;
 
 /// Subscriber on a particular topic pattern
 struct PatternSubscriber<M: MessageBounds> {
@@ -26,6 +28,12 @@ pub struct InMemoryBus<M: MessageBounds> {
 
     /// Sender for received messages
     sender: mpsc::Sender<(String, Arc<M>)>,
+
+    /// Bulk blocking notifier
+    notify_space_for_bulk: Arc<Notify>,
+
+    /// Capacity at which to stop sending bulk
+    bulk_block_capacity: usize,
 }
 
 impl<M: MessageBounds> InMemoryBus<M> {
@@ -36,9 +44,16 @@ impl<M: MessageBounds> InMemoryBus<M> {
             .unwrap_or(DEFAULT_DISPATCH_QUEUE_SIZE) as usize;
         let worker_queue_size = config.get_int("worker-queue-size")
             .unwrap_or(DEFAULT_WORKER_QUEUE_SIZE) as usize;
+        let bulk_block_capacity_percent = config.get_int("bulk-block-capacity")
+            .unwrap_or(DEFAULT_BULK_BLOCK_CAPACITY) as usize;
+        let bulk_resume_capacity_percent = config.get_int("bulk-resume-capacity")
+            .unwrap_or(DEFAULT_BULK_RESUME_CAPACITY) as usize;
 
         let (sender, mut receiver) =
             mpsc::channel::<(String, Arc<M>)>(dispatch_queue_size);
+        let notify_space_for_bulk = Arc::new(Notify::new());
+        let bulk_resume_capacity = dispatch_queue_size * bulk_block_capacity_percent / 100;
+        let bulk_block_capacity = dispatch_queue_size * bulk_resume_capacity_percent / 100;
 
         info!("Creating in-memory message bus with {} workers", num_workers);
 
@@ -64,6 +79,8 @@ impl<M: MessageBounds> InMemoryBus<M> {
 
         // Single receiver task to handle incoming messages
         let subs_clone = subscribers.clone();
+        let notify_clone = notify_space_for_bulk.clone();
+        let sender_clone = sender.clone();
         tokio::spawn(async move {
             let mut round_robin_index = 0;
 
@@ -78,7 +95,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
                         .collect()
                 };
 
-                // Lock the subscribers for the topic
+                // Send it to every subscriber
                 for patsub in matching {
                     // Loop in case worker queues are full
                     for i in 0..num_workers+1 {  // ends with i=num_workers
@@ -96,6 +113,7 @@ impl<M: MessageBounds> InMemoryBus<M> {
                             if let Err(e) = worker_tx.send(data).await {
                                 error!("Failed to send message to worker: {}", e);
                             }
+                            debug!("Worker accepted message - unblocked");
                         } else {
                             // Try each one in turn, stop if it accepts it
                             match worker_tx.try_send(data) {
@@ -108,23 +126,40 @@ impl<M: MessageBounds> InMemoryBus<M> {
                         round_robin_index += 1;
                     }
                 }
+
+                // Notify space for bulk if there is enough
+                if sender_clone.capacity() >= bulk_resume_capacity {
+                    notify_clone.notify_waiters();
+                }
             }
         });
 
-        InMemoryBus { subscribers, sender }
+        InMemoryBus { 
+            subscribers, 
+            sender, 
+            notify_space_for_bulk, 
+            bulk_block_capacity 
+        }
     }
 }
 
 impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
 
     /// Publish a message on a given topic
-    fn publish(&self, topic: &str, message: Arc<M>)
+    fn publish_with_qos(&self, topic: &str, message: Arc<M>, qos: QoS)
                -> BoxFuture<'static, Result<()>> {
         let topic = topic.to_string();
         let sender = self.sender.clone();
         let message = message.clone();
+        let notify_space_for_bulk = self.notify_space_for_bulk.clone();
+        let bulk_block_capacity = self.bulk_block_capacity;
 
         Box::pin(async move {
+            // Hold up bulk sending if capacity below water mark
+            if matches!(qos, QoS::Bulk) && sender.capacity() < bulk_block_capacity {
+                notify_space_for_bulk.notified().await;
+            }
+
             sender.send((topic, message)).await?;
             Ok(())
         })

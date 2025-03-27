@@ -6,7 +6,7 @@ use tokio::sync::oneshot::Sender;
 use anyhow::{Result, anyhow};
 use config::Config;
 use futures::future::{BoxFuture, ready};
-use crate::message_bus::{MessageBus, Subscriber, MessageBounds};
+use crate::message_bus::{MessageBus, Subscriber, MessageBounds, QoS};
 use tracing::{debug, info, error};
 use std::collections::{HashSet, HashMap};
 use rand::Rng;
@@ -58,9 +58,10 @@ impl<M> MessageBus<M> for CorrelationBus<M>
   where M: MessageBounds {
 
     /// Publish a message on a given topic
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
+    fn publish_with_qos(&self, topic: &str, message: Arc<M>, qos: QoS) 
+        -> BoxFuture<'static, Result<()>> {
         // Pass straight through
-        self.bus.publish(topic, message)
+        self.bus.publish_with_qos(topic, message, qos)
     }
 
     /// Request a response on a given topic
