@@ -1,7 +1,7 @@
 # Caraytid process - loads and runs modules
 [package]
 name = "caryatid_process"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 authors = ["Paul Clark <paul.clark@iohk.io>"]
 description = "Library for building a Caryatid process"
@@ -12,7 +12,7 @@ caryatid_sdk = { version="0.2", path = "../sdk" }
 futures = "0.3"
 anyhow = "1.0"
 tokio = { version = "1", features = ["full"] }
-config = "0.14.0"
+config = "0.15.11"
 tracing = "0.1.40"
 lapin = "2.5.0"
 serde = "1.0.210"

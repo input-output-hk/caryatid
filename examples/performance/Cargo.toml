@@ -14,7 +14,7 @@ caryatid_process = { path = "../../process" }
 caryatid_sdk = { path = "../../sdk" }
 
 anyhow = "1.0"
-config = "0.14.0"
+config = "0.15.11"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 tokio = { version = "1", features = ["full"] }
