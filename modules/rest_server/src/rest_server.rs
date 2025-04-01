@@ -74,12 +74,14 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
             let topic = format!("{topic_prefix}.{method_lower}.{dot_path}");
             info!("Sending to topic {}", topic);
 
+            let path_elements = dot_path.split('.').map(String::from).collect();
+
             // Construct message
-            let message = RESTRequest { method, path, body };
+            let message = RESTRequest { method, path, body, path_elements };
 
             let response = match message_bus.request(&topic, Arc::new(message.into())).await {
                 Ok(response) => match response.get_rest_response() {
-                    Some(RESTResponse { code, body }) => {
+                    Some(RESTResponse { code, body, content_type }) => {
 
                         info!("Got response: {code} {}{}",
                               &body[..std::cmp::min(body.len(), MAX_LOG)],
@@ -88,6 +90,10 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
                         Response::builder()
                             .status(StatusCode::from_u16(code)
                                     .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
+                            .header("Content-Type", match content_type {
+                                Some(content_type) => content_type,
+                                None => "application/json".to_string()
+                            })
                             .body(body)
                             .unwrap()
                     },
@@ -144,7 +150,7 @@ mod tests {
     use caryatid_sdk::correlation_bus::CorrelationBus;
     use tracing::{Level, debug};
     use tracing_subscriber;
-    use tokio::sync::{Notify};
+    use tokio::sync::Notify;
     use tokio::time::{timeout, Duration};
     use std::net::TcpListener;
     use hyper::Client;
@@ -266,14 +272,17 @@ mod tests {
                     info!("REST hello world received {} {}", request.method, request.path);
                     RESTResponse {
                         code: 200,
-                        body: "Hello, world!".to_string()
+                        body: "Hello, world!".to_string(),
+                        content_type: None,
                     }
                 },
                 _ => {
                     error!("Unexpected message type {:?}", message);
                     RESTResponse {
                         code: 500,
-                        body: "Unexpected message in REST request".to_string() }
+                        body: "Unexpected message in REST request".to_string(),
+                        content_type: None
+                    }
                 }
             };
 

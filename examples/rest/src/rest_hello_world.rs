@@ -29,14 +29,17 @@ impl RESTHelloWorld {
                     info!("REST hello world received {} {}", request.method, request.path);
                     RESTResponse {
                         code: 200,
-                        body: "Hello, world!".to_string()
+                        body: "Hello, world!".to_string(),
+                        content_type: None,
                     }
                 },
                 _ => {
                     error!("Unexpected message type {:?}", message);
                     RESTResponse {
                         code: 500,
-                        body: "Unexpected message in REST request".to_string() }
+                        body: "Unexpected message in REST request".to_string(),
+                        content_type: None
+                    }
                 }
             };
 
