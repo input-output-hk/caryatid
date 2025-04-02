@@ -27,8 +27,29 @@ pub struct RESTResponse {
     /// Response body (if any)
     pub body: String,
 
-    /// Response content-type (if any, server defaults to application/json)
-    pub content_type: Option<String>,
+    /// Response content-type
+    pub content_type: String,
+}
+
+impl RESTResponse {
+    /// Construct with any content-type
+    pub fn new(code: u16, body: &str, content_type: &str) -> Self {
+        Self {
+            code,
+            body: body.to_string(),
+            content_type: content_type.to_string(),
+        }
+    }
+
+    /// Construct for text/plain
+    pub fn with_text(code: u16, body: &str) -> Self {
+        Self::new(code, body, "text/plain")
+    }
+
+    /// Construct for application/json
+    pub fn with_json(code: u16, body: &str) -> Self {
+        Self::new(code, body, "application/json")
+    }
 }
 
 pub trait GetRESTResponse {

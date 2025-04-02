@@ -27,19 +27,11 @@ impl RESTHelloWorld {
             let response = match message.as_ref() {
                 Message::RESTRequest(request) => {
                     info!("REST hello world received {} {}", request.method, request.path);
-                    RESTResponse {
-                        code: 200,
-                        body: "Hello, world!".to_string(),
-                        content_type: None,
-                    }
+                    RESTResponse::with_text(200, "Hello, world!")
                 },
                 _ => {
                     error!("Unexpected message type {:?}", message);
-                    RESTResponse {
-                        code: 500,
-                        body: "Unexpected message in REST request".to_string(),
-                        content_type: None
-                    }
+                    RESTResponse::with_text(500, "Unexpected message in REST request")
                 }
             };
 

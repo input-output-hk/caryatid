@@ -68,11 +68,11 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
                                     .unwrap())
             };
 
-            // Construct topic, turning / to . and remove leading /
+            // Construct topic, turning / to . and remove leading and trailing /
             let method_lower = method.to_lowercase();
-            let dot_path = path.strip_prefix("/")
-                .unwrap_or(&path)
-                .replace('/', ".");
+            let dot_path = path.strip_prefix("/").unwrap_or(&path);
+            let dot_path = dot_path.strip_suffix("/").unwrap_or(&dot_path);
+            let dot_path = dot_path.replace('/', ".");
             let topic = format!("{topic_prefix}.{method_lower}.{dot_path}");
             info!("Sending to topic {}", topic);
 
@@ -92,10 +92,7 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
                         Response::builder()
                             .status(StatusCode::from_u16(code)
                                     .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
-                            .header("Content-Type", match content_type {
-                                Some(content_type) => content_type,
-                                None => "application/json".to_string()
-                            })
+                            .header("Content-Type", content_type)
                             .body(body)
                             .unwrap()
                     },
@@ -272,19 +269,11 @@ mod tests {
             let response = match message.as_ref() {
                 Message::RESTRequest(request) => {
                     info!("REST hello world received {} {}", request.method, request.path);
-                    RESTResponse {
-                        code: 200,
-                        body: "Hello, world!".to_string(),
-                        content_type: None,
-                    }
+                    RESTResponse::with_text(200, "Hello, world!")
                 },
                 _ => {
                     error!("Unexpected message type {:?}", message);
-                    RESTResponse {
-                        code: 500,
-                        body: "Unexpected message in REST request".to_string(),
-                        content_type: None
-                    }
+                    RESTResponse::with_text(500, "Unexpected message in REST request")
                 }
             };
 
