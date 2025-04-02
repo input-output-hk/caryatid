@@ -4,7 +4,6 @@ pub mod context;
 pub mod module;
 pub mod module_registry;
 pub mod config;
-pub mod messages;
 pub mod match_topic;
 pub mod mock_bus;
 pub mod correlation_bus;

@@ -2,7 +2,6 @@
 //! Provides a REST endpoint which integrates with the message bus
 
 use caryatid_sdk::{Context, Module, module, MessageBounds};
-use caryatid_sdk::messages::{RESTRequest, RESTResponse, GetRESTResponse};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
@@ -18,6 +17,9 @@ use hyper::body;
 
 use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 use std::convert::Infallible;
+
+pub mod messages;
+use messages::{RESTRequest, RESTResponse, GetRESTResponse};
 
 /// Default IP address and port to listen on
 const DEFAULT_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));

@@ -1,6 +1,6 @@
 //! REST server Caraytid module - simple /hello responder
 use caryatid_sdk::{Context, MessageBusExt, Module, module};
-use caryatid_sdk::messages::RESTResponse;
+use caryatid_module_rest_server::messages::RESTResponse;
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;

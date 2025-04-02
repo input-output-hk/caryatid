@@ -2,7 +2,6 @@
 //! Generates regular clock.tick events
 
 use caryatid_sdk::{Context, Module, module, MessageBounds};
-use caryatid_sdk::messages::ClockTickMessage;
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
@@ -12,6 +11,9 @@ use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 
 const DEFAULT_TOPIC: &str = "clock.tick";
+
+pub mod messages;
+use messages::ClockTickMessage;
 
 /// Clock module
 /// Parameterised by the outer message enum used on the bus

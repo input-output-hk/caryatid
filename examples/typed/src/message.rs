@@ -1,6 +1,6 @@
 //! Message type definitions for example process
 
-use caryatid_sdk::messages::ClockTickMessage;
+use caryatid_module_clock::messages::ClockTickMessage;
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Test {

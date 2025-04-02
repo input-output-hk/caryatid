@@ -1,6 +1,6 @@
 //! Message type definitions for REST process
 
-use caryatid_sdk::messages::{RESTRequest, RESTResponse, GetRESTResponse};
+use caryatid_module_rest_server::messages::{RESTRequest, RESTResponse, GetRESTResponse};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Message {
