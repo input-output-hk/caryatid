@@ -9,6 +9,7 @@ members = [
     "modules/clock",        # System clock
     "modules/rest_server",  # REST server
     "modules/spy",          # Message spy module
+    "modules/record",       # Message recorder module
 
     # Examples
     "examples/simple",      # Sample process

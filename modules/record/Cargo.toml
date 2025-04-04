@@ -1,0 +1,21 @@
+# Caryatid Record module
+
+[package]
+name = "caryatid_module_record"
+version = "0.1.0"
+edition = "2021"
+authors = ["Alex Woods <alex.woods@iohk.io>"]
+description = "Message recording module for Caryatid"
+license = "Apache-2.0"
+
+[dependencies]
+caryatid_sdk = { version="0.4", path = "../../sdk" }
+anyhow = "1.0"
+tokio = { version = "1", features = ["full"] }
+serde_json = "1.0"
+config = "0.15.11"
+tracing = "0.1.40"
+serde = { version = "1.0.214", features = ["derive"] }
+
+[lib]
+path = "src/record.rs"
