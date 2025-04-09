@@ -9,7 +9,7 @@ use anyhow::{Error, Result};
 use config::Config;
 use tracing::{info, error};
 
-/// Spy module
+/// Record module
 /// Parameterised by the outer message enum used on the bus
 #[module(
     message_type(M),
