@@ -32,7 +32,8 @@ impl<M: MessageBounds> RabbitMQBus<M> {
             .unwrap_or("amqp://127.0.0.1:5672/%2f".to_string());
         info!("Connecting to RabbitMQ at {}", url);
 
-        let connection = Connection::connect(&url, ConnectionProperties::default())
+        let props = ConnectionProperties::default().with_executor(tokio_executor_trait::Tokio::current());
+        let connection = Connection::connect(&url, props)
             .await
             .with_context(|| "Can't create RabbitMQ connection")?;
 
