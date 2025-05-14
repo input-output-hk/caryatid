@@ -26,13 +26,12 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
 
     /// Publish a message with normal QoS
     /// Note async but not defined as such because this is used dynamically
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
-        self.publish_with_qos(topic, message, QoS::Normal)
-    }
+    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>>;
 
     /// Publish a message with given QoS
-    fn publish_with_qos(&self, topic: &str, message: Arc<M>, qos: QoS) 
-        -> BoxFuture<'static, Result<()>>;
+    fn publish_with_qos(&self, topic: &str, message: Arc<M>, _qos: QoS)
+                        -> BoxFuture<'static, Result<()>>
+    { self.publish(topic, message) }
 
     /// Request/response - as publish() but returns a result
     /// Note only implemented in CorrelationBus

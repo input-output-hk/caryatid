@@ -11,7 +11,7 @@ use config::Config;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use futures::future::{ready, BoxFuture};
-use caryatid_sdk::message_bus::{MessageBounds, MessageBus, QoS, Subscriber};
+use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscriber};
 use std::marker::PhantomData;
 use tracing::{info, error};
 
@@ -74,9 +74,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
     MessageBus<M> for RabbitMQBus<M>
 {
     /// Publish a message on a topic
-    // TODO use Qos?
-    fn publish_with_qos(&self, topic: &str, message: Arc<M>, _qos: QoS)
-               -> BoxFuture<'static, Result<()>> {
+    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
         let channel = self.channel.clone();
         let message = Arc::clone(&message);
         let topic = topic.to_string();

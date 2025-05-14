@@ -1,22 +1,19 @@
 // In-memory pub-sub bus with multi-threaded async workers
-use tokio::sync::{mpsc, Mutex, Notify};
+use tokio::sync::{mpsc, Mutex};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
-use tracing::{info, error, debug};
+use tracing::info;
 use futures::future::BoxFuture;
-use caryatid_sdk::message_bus::{MessageBounds, MessageBus, QoS, Subscriber};
+use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscriber};
 use caryatid_sdk::match_topic::match_topic;
 
-const DEFAULT_WORKERS: i64 = 4;
-const DEFAULT_DISPATCH_QUEUE_SIZE: i64 = 1000;
-const DEFAULT_WORKER_QUEUE_SIZE: i64 = 1000;
-const DEFAULT_BULK_BLOCK_CAPACITY: i64 = 50;
-const DEFAULT_BULK_RESUME_CAPACITY: i64 = 75;
+const DEFAULT_SUBSCRIBER_QUEUE_SIZE: i64 = 10;
 
 /// Subscriber on a particular topic pattern
 struct PatternSubscriber<M: MessageBounds> {
     pattern: String,
+    queue: mpsc::Sender<(Arc<Subscriber<M>>, String, Arc<M>)>,
     subscriber: Arc<Subscriber<M>>,
 }
 
@@ -26,130 +23,23 @@ pub struct InMemoryBus<M: MessageBounds> {
     /// Subscribers
     subscribers: Arc<Mutex<Vec<Arc<PatternSubscriber<M>>>>>,
 
-    /// Sender for received messages
-    sender: mpsc::Sender<(String, Arc<M>)>,
-
-    /// Bulk blocking notifier
-    notify_space_for_bulk: Arc<Notify>,
-
-    /// Capacity at which to stop sending bulk
-    bulk_block_capacity: usize,
-
-    /// Worker Tx, for counting capacity
-    worker_txs: Vec<mpsc::Sender<(Arc<Subscriber<M>>, String, Arc<M>)>>,
+    /// Queue size for subscriber
+    subscriber_queue_size: usize,
 }
 
 impl<M: MessageBounds> InMemoryBus<M> {
     pub fn new(config: &Config) -> Self {
-        let num_workers = config.get_int("workers")
-            .unwrap_or(DEFAULT_WORKERS) as usize;
-        let dispatch_queue_size = config.get_int("dispatch-queue-size")
-            .unwrap_or(DEFAULT_DISPATCH_QUEUE_SIZE) as usize;
-        let worker_queue_size = config.get_int("worker-queue-size")
-            .unwrap_or(DEFAULT_WORKER_QUEUE_SIZE) as usize;
-        let bulk_block_capacity_percent = config.get_int("bulk-block-capacity")
-            .unwrap_or(DEFAULT_BULK_BLOCK_CAPACITY) as usize;
-        let bulk_resume_capacity_percent = config.get_int("bulk-resume-capacity")
-            .unwrap_or(DEFAULT_BULK_RESUME_CAPACITY) as usize;
+        info!("Creating in-memory message bus");
 
-        let (sender, mut receiver) =
-            mpsc::channel::<(String, Arc<M>)>(dispatch_queue_size);
-        let notify_space_for_bulk = Arc::new(Notify::new());
-
-        // Work out the capacity thresholds
-        let total_capacity = dispatch_queue_size + num_workers * worker_queue_size;
-        let bulk_resume_capacity = total_capacity * bulk_resume_capacity_percent / 100;
-        let bulk_block_capacity = total_capacity * bulk_block_capacity_percent / 100;
-
-        info!("Creating in-memory message bus with {} workers, total capacity {}", 
-            num_workers, total_capacity);
+        let subscriber_queue_size = config.get_int("subscriber-queue-size")
+            .unwrap_or(DEFAULT_SUBSCRIBER_QUEUE_SIZE) as usize;
 
         let subscribers: Arc<Mutex<Vec<Arc<PatternSubscriber<M>>>>> =
             Arc::new(Mutex::new(Vec::new()));
 
-        // Create a task queue channel for each worker
-        let mut worker_txs = Vec::new();
-        for _ in 0..num_workers {
-            let (worker_tx, mut worker_rx) =
-                mpsc::channel::<(Arc<Subscriber<M>>,
-                                 String,
-                                 Arc<M>)>(worker_queue_size);
-            worker_txs.push(worker_tx);
-
-            // Spawn worker tasks that handle individual subscriber invocations
-            tokio::spawn(async move {
-                while let Some((subscriber, topic, message)) = worker_rx.recv().await {
-                    subscriber(&topic, message.clone()).await;
-                }
-            });
-        }
-
-        // Single receiver task to handle incoming messages
-        let subs_clone = subscribers.clone();
-        let notify_clone = notify_space_for_bulk.clone();
-        let sender_clone = sender.clone();
-        let workers = worker_txs.clone();
-        tokio::spawn(async move {
-            let mut round_robin_index = 0;
-
-            while let Some((topic, message)) = receiver.recv().await {
-
-                // Get matching subscribers, limiting lock duration
-                let matching: Vec<_> = {
-                    let subscribers = subs_clone.lock().await;
-                    subscribers.iter()
-                        .filter(|patsub| match_topic(&patsub.pattern, &topic))
-                        .map(Arc::clone)
-                        .collect()
-                };
-
-                // Send it to every subscriber
-                for patsub in matching {
-                    // Loop in case worker queues are full
-                    for i in 0..num_workers+1 {  // ends with i=num_workers
-                        // Dispatch the task to a worker
-                        let worker_tx = &workers[(round_robin_index+i) % num_workers];
-
-                        // Send the subscriber and the message to a worker
-                        let data = (patsub.subscriber.clone(), topic.clone(),
-                                    message.clone());
-
-                        // If we've looped right round then they're all full -
-                        // just block on the first one
-                        if i == num_workers {
-                            debug!("All worker queues full - blocking {topic}");
-                            if let Err(e) = worker_tx.send(data).await {
-                                error!("Failed to send message to worker: {}", e);
-                            }
-                            debug!("Worker accepted message - unblocked");
-                        } else {
-                            // Try each one in turn, stop if it accepts it
-                            match worker_tx.try_send(data) {
-                                Ok(_) => break,
-                                Err(mpsc::error::TrySendError::Full(_)) => {},
-                                Err(e) => error!("Failed to send message to worker: {e}")
-                            }
-                        }
-
-                        round_robin_index += 1;
-                    }
-                }
-
-                // Notify space for bulk if there is enough
-                let capacity = sender_clone.capacity() 
-                    + workers.iter().map(|s| s.capacity()).sum::<usize>();
-                if capacity >= bulk_resume_capacity {
-                    notify_clone.notify_waiters();
-                }
-            }
-        });
-
         InMemoryBus {
             subscribers,
-            sender,
-            notify_space_for_bulk,
-            bulk_block_capacity,
-            worker_txs
+            subscriber_queue_size,
         }
     }
 }
@@ -157,25 +47,28 @@ impl<M: MessageBounds> InMemoryBus<M> {
 impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
 
     /// Publish a message on a given topic
-    fn publish_with_qos(&self, topic: &str, message: Arc<M>, qos: QoS)
+    fn publish(&self, topic: &str, message: Arc<M>)
                -> BoxFuture<'static, Result<()>> {
+        let subscribers = self.subscribers.clone();
         let topic = topic.to_string();
-        let sender = self.sender.clone();
         let message = message.clone();
-        let notify_space_for_bulk = self.notify_space_for_bulk.clone();
-        let bulk_block_capacity = self.bulk_block_capacity;
-        let capacity = self.sender.capacity() 
-            + self.worker_txs.iter().map(|s| s.capacity()).sum::<usize>();
 
         Box::pin(async move {
-            // Hold up bulk sending if capacity below water mark
-            if matches!(qos, QoS::Bulk) && capacity < bulk_block_capacity {
-                debug!("Bulk {topic} held at capacity {}", capacity);
-                notify_space_for_bulk.notified().await;
-                debug!("Bulk {topic} released");
+            // Get matching subscribers, limiting lock duration
+            let matching: Vec<_> = {
+                subscribers.lock().await.iter()
+                    .filter(|patsub| match_topic(&patsub.pattern, &topic))
+                    .map(Arc::clone)
+                    .collect()
+            };
+
+            for patsub in matching {
+                let subscriber = patsub.subscriber.clone();
+                let topic = topic.clone();
+                let message = message.clone();
+                patsub.queue.send((subscriber, topic, message)).await?;
             }
 
-            sender.send((topic, message)).await?;
             Ok(())
         })
     }
@@ -185,12 +78,28 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
                            -> BoxFuture<'static, Result<()>> {
         let subscribers = self.subscribers.clone();
         let topic = topic.to_string();
+        let subscriber_queue_size = self.subscriber_queue_size;
+
         Box::pin(async move {
+
+            let (sender, mut receiver) =
+                mpsc::channel::<(Arc<Subscriber<M>>,
+                                 String,
+                                 Arc<M>)>(subscriber_queue_size);
+
             let mut subscribers = subscribers.lock().await;
             subscribers.push(Arc::new(PatternSubscriber {
                 pattern: topic,
+                queue: sender,
                 subscriber: subscriber
             }));
+
+            tokio::spawn(async move {
+                while let Some((subscriber, topic, message)) = receiver.recv().await {
+                    subscriber(&topic, message.clone()).await;
+                }
+            });
+
             Ok(())
         })
     }
