@@ -120,3 +120,37 @@ jobs:
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish caryatid_module_playback if version changed
+        run: |
+          current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_module_playback").version')
+          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_module_playback | jq -r '.crate.max_version')
+
+          echo "Current Version (caryatid_module_playback): $current_version"
+          echo "Published Version (caryatid_module_playback): $published_version"
+
+          if [ "$current_version" != "$published_version" ]; then
+            echo "Version changed. Publishing caryatid_module_playback..."
+            cargo publish --manifest-path=modules/playback/Cargo.toml
+          else
+            echo "No version change detected for caryatid_module_playback."
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish caryatid_module_record if version changed
+        run: |
+          current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_module_record").version')
+          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_module_record | jq -r '.crate.max_version')
+
+          echo "Current Version (caryatid_module_record): $current_version"
+          echo "Published Version (caryatid_module_record): $published_version"
+
+          if [ "$current_version" != "$published_version" ]; then
+            echo "Version changed. Publishing caryatid_module_record..."
+            cargo publish --manifest-path=modules/record/Cargo.toml
+          else
+            echo "No version change detected for caryatid_module_record."
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
