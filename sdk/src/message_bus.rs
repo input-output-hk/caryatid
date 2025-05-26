@@ -8,6 +8,11 @@ use tracing::error;
 pub type Subscriber<M> = dyn Fn(&str, Arc<M>) ->
     BoxFuture<'static, ()> + Send + Sync + 'static;
 
+pub trait SubscriptionBounds: Send {}
+pub trait Subscription<M>: SubscriptionBounds {
+    fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>>;
+}
+
 /// Message quality-of-service
 #[derive(Clone, Copy)]
 pub enum QoS {
@@ -40,9 +45,8 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
        Box::pin(ready(Err(anyhow!("Not implemented"))))
     }
 
-    /// Register an subscriber function
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
-                           -> BoxFuture<'static, Result<()>>;
+    /// Register with the bus
+    fn register(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>>;
 
     /// Shut down
     fn shutdown(&self) -> BoxFuture<'static, anyhow::Result<()>>;
@@ -83,7 +87,16 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
                     Box::pin(subscriber(message))
                 });
 
-            arc_self.register_subscriber(&topic, arc_subscriber).await
+            match arc_self.register(&topic).await {
+                Ok(mut subscription) => {
+                    while let Ok((topic, message)) = subscription.read().await {
+                        arc_subscriber(&topic, message.clone()).await;
+                    }
+                },
+                Err(e) => {
+                    error!("Could not register subscription on topic {topic}: {e}");
+                },
+            }
         });
 
         Ok(())
@@ -116,7 +129,16 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
 
             // Subscribe for all request IDs in this topic
             let request_pattern = format!("{topic}.*");
-            arc_self.register_subscriber(&request_pattern, arc_subscriber).await
+            match arc_self.register(&request_pattern).await {
+                Ok(mut subscription) => {
+                    while let Ok((topic, message)) = subscription.read().await {
+                        arc_subscriber(&topic, message).await;
+                    }
+                },
+                Err(e) => {
+                    error!("Could not register subscription on topic {topic}: {e}");
+                },
+            }
         });
 
         Ok(())

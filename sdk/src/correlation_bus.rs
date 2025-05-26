@@ -6,7 +6,7 @@ use tokio::sync::oneshot::Sender;
 use anyhow::{Result, anyhow};
 use config::Config;
 use futures::future::{BoxFuture, ready};
-use crate::message_bus::{MessageBus, Subscriber, MessageBounds};
+use crate::message_bus::{MessageBus, MessageBounds, Subscription};
 use tracing::{debug, info, error};
 use std::collections::{HashSet, HashMap};
 use rand::Rng;
@@ -92,40 +92,46 @@ impl<M> MessageBus<M> for CorrelationBus<M>
                 let requests = requests.clone();
 
                 // Subscribe to all responses matching the response_topic
-                let _ = bus.register_subscriber(
-                    &response_pattern,
-                    Arc::new(move |response_topic: &str, response_message: Arc<M>| {
+                match bus.register(&response_pattern).await {
+                    Ok(mut subscription) => {
+                        tokio::spawn(async move {
+                            if let Ok((response_topic, response_message)) = subscription.read().await {
 
-                        debug!("Correlator received response on {response_topic}");
-                        let response_topic = response_topic.to_owned();
+                                debug!("Correlator received response on {response_topic}");
+                                let response_topic = response_topic.to_owned();
 
-                        // Check it matches the request topic
-                        if response_topic.starts_with(&topic) {
-                            let suffix = &response_topic[topic.len()..];
-                            if suffix.starts_with('.') && suffix.ends_with(".response") {
-                                let response_id = &suffix[1..suffix.len()-9];
-                                let requests = requests.clone();
-                                let response_id = response_id.to_owned();
+                                // Check it matches the request topic
+                                if response_topic.starts_with(&topic) {
+                                    let suffix = &response_topic[topic.len()..];
+                                    if suffix.starts_with('.') && suffix.ends_with(".response") {
+                                        let response_id = &suffix[1..suffix.len()-9];
+                                        let requests = requests.clone();
+                                        let response_id = response_id.to_owned();
 
-                                tokio::spawn(async move {
-                                    let mut requests = requests.lock().await;
-                                    if let Some(request) = requests.remove(&response_id) {
-                                        let _ = request.notify.send(Ok(response_message.clone()));
-                                    } else {
-                                        error!("Unrecognised response ID in {response_topic}");
+                                        tokio::spawn(async move {
+                                            let mut requests = requests.lock().await;
+                                            if let Some(request) = requests.remove(&response_id) {
+                                                let _ = request.notify.send(Ok(response_message.clone()));
+                                            } else {
+                                                error!("Unrecognised response ID in {response_topic}");
+                                            }
+                                        });
                                     }
-                                });
-                            }
-                            else {
-                                error!("No response ID found in {response_topic}");
-                            }
-                        } else {
-                            error!("Response topic {response_topic} doesn't match topic {topic}");
-                        }
+                                    else {
+                                        error!("No response ID found in {response_topic}");
+                                    }
+                                } else {
+                                    error!("Response topic {response_topic} doesn't match topic {topic}");
+                                }
+                            };
 
-                        Box::pin(ready(()))
-                    })
-                ).await;
+                            Box::pin(ready(()))
+                        });
+                    },
+                    Err(e) => {
+                        error!("Could not register subscription on topic {topic}: {e}");
+                    },
+                }
             }
 
             // Record in-flight requests with a OneShot to recover the result
@@ -152,9 +158,8 @@ impl<M> MessageBus<M> for CorrelationBus<M>
     }
 
     // Subscribe for a message with an subscriber function
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
-                                                      -> BoxFuture<'static, Result<()>> {
-        self.bus.register_subscriber(topic, subscriber)
+    fn register(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
+        self.bus.register(topic)
     }
 
     /// Shut down, shutting down all the buses
@@ -226,17 +231,12 @@ mod tests {
         let setup = TestSetup::<String>::new("");
 
         // Subscribe
-        assert!(setup.bus.register_subscriber("test",
-                                              Arc::new(|_topic: &str, _message: Arc<String>| {
-                                                  Box::pin(ready(()))
-                                              }))
-                .await
-                .is_ok());
+        let _subscription = setup.bus.register("test").await;
 
         // Check the mock got it
-        let mock_subscribes = setup.mock.subscribes.lock().await;
-        assert_eq!(mock_subscribes.len(), 1);
-        let sub0 = &mock_subscribes[0];
+        let mock_subscriptions = setup.mock.subscriptions.lock().await;
+        assert_eq!(mock_subscriptions.len(), 1);
+        let sub0 = &mock_subscriptions[0];
         assert_eq!(sub0.topic, "test");
     }
 

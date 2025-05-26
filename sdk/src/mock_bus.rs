@@ -1,10 +1,11 @@
 //! Mock message bus for tests
+use std::collections::VecDeque;
 use std::sync::Arc;
 use futures::future::BoxFuture;
 use anyhow::Result;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use tracing::debug;
-use crate::message_bus::{MessageBus, Subscriber, MessageBounds};
+use crate::message_bus::{MessageBus, MessageBounds, Subscription, SubscriptionBounds};
 use crate::match_topic::match_topic;
 
 pub struct PublishRecord<M: MessageBounds> {
@@ -12,14 +13,49 @@ pub struct PublishRecord<M: MessageBounds> {
     pub message: Arc<M>
 }
 
-pub struct SubscribeRecord<M: MessageBounds> {
+#[derive(Clone)]
+pub struct MockSubscription<M> {
+    messages: Arc<Mutex<VecDeque<(String, Arc<M>)>>>,
+    notify: Arc<Notify>,
+}
+
+pub struct SubscriptionRecord<M> {
     pub topic: String,
-    pub subscriber: Arc<Subscriber<M>>,
+    pub subscription: MockSubscription<M>,
+}
+
+impl<M: MessageBounds> SubscriptionBounds for MockSubscription<M> {}
+
+impl<M> MockSubscription<M> {
+    pub fn new() -> Self {
+        Self {
+            messages: Arc::new(Mutex::new(VecDeque::new())),
+            notify: Arc::new(Notify::new()),
+        }
+    }
+
+    pub async fn push(&self, topic: &str, message: Arc<M>) {
+        self.messages.lock().await.push_back((topic.to_string(), message));
+        self.notify.notify_one();
+    }
+}
+
+impl<M: MessageBounds> Subscription<M> for MockSubscription<M> {
+    fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
+        Box::pin(async move {
+            loop {
+                self.notify.notified().await;
+                if let Some(entry) = self.messages.lock().await.pop_front() {
+                    return Ok(entry);
+                }
+            }
+        })
+    }
 }
 
 pub struct MockBus<M: MessageBounds> {
     pub publishes: Arc<Mutex<Vec<PublishRecord<M>>>>,
-    pub subscribes: Arc<Mutex<Vec<SubscribeRecord<M>>>>,
+    pub subscriptions: Arc<Mutex<Vec<SubscriptionRecord<M>>>>,
     pub shutdowns: Arc<Mutex<u16>>,           // just count them
 }
 
@@ -27,7 +63,7 @@ impl<M: MessageBounds> MockBus<M> {
     pub fn new() -> Self {
         Self {
             publishes: Arc::new(Mutex::new(Vec::new())),
-            subscribes: Arc::new(Mutex::new(Vec::new())),
+            subscriptions: Arc::new(Mutex::new(Vec::new())),
             shutdowns: Arc::new(Mutex::new(0)),
         }
     }
@@ -40,7 +76,7 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
 
         debug!("Mock publish on {topic}");
         let publishes = self.publishes.clone();
-        let subscribes = self.subscribes.clone();
+        let subscriptions = self.subscriptions.clone();
         let topic = topic.to_string();
 
         Box::pin(async move {
@@ -54,37 +90,38 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
                 });
             }
 
-            // Send to all subscribers if topic matches
-            // Copy relevant subscribers before calling them to avoid deadlock if a subscriber
+            // Send to all subscriptions if topic matches
+            // Copy relevant subscriptions before calling them to avoid deadlock if a subscription
             // does another publish (as handle() does)
-            let mut relevant_subscribers: Vec<Arc<Subscriber<M>>> = Vec::new();
+            let mut relevant_subscriptions: Vec<MockSubscription<M>> = Vec::new();
             {
-                let subscribes = subscribes.lock().await;
-                for sub in subscribes.iter() {
+                let subscriptions = subscriptions.lock().await;
+                for sub in subscriptions.iter() {
                     if match_topic(&sub.topic, &topic) {
-                        relevant_subscribers.push(sub.subscriber.clone())
+                        relevant_subscriptions.push(sub.subscription.clone())
                     }
                 }
             }
 
-            for sub in relevant_subscribers.iter() {
-                sub(&topic, message.clone()).await;
+            for sub in relevant_subscriptions.iter() {
+                sub.push(&topic, message.clone()).await;
             }
 
             Ok(())
         })
     }
 
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
-                           -> BoxFuture<'static, Result<()>> {
-        debug!("Mock subscribe on {topic}");
-        let subscribes = self.subscribes.clone();
+    fn register(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
         let topic = topic.to_string();
-
         Box::pin(async move {
-            let mut subscribes = subscribes.lock().await;
-            subscribes.push(SubscribeRecord{ topic, subscriber });
-            Ok(())
+            debug!("Mock subscribe on {topic}");
+            let mut subscriptions = self.subscriptions.lock().await;
+            let subscription = MockSubscription::new();
+            subscriptions.push(SubscriptionRecord {
+                topic: topic.to_string(),
+                subscription: subscription.clone(),
+            });
+            Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
         })
     }
 

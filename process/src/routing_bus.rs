@@ -1,14 +1,51 @@
 //! Message super-bus which routes to other MessageBuses
 use tokio::sync::Mutex;
+use std::mem;
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture, select_all};
 use tracing::{info, error};
-use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscriber};
+use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
 use caryatid_sdk::match_topic::match_topic;
 use caryatid_sdk::config::config_from_value;
 use std::collections::BTreeMap;
+
+// By creating a function that returns the subscription, we can keep the
+// subscription and corresponding future bound to each other whilst only
+// holding onto a set of futures
+fn read<'a, M: 'a>(mut subscription: Box<dyn Subscription<M>>) -> BoxFuture<'a, (anyhow::Result<(String, Arc<M>)>, Box<dyn Subscription<M>>)> {
+    Box::pin(async move {
+        let result = subscription.read().await;
+        (result, subscription)
+    })
+}
+
+struct RoutingSubscription<'a, M> {
+    pub reads: Vec<BoxFuture<'a, (anyhow::Result<(String, Arc<M>)>, Box<dyn Subscription<M>>)>>,
+}
+
+impl<M: MessageBounds> SubscriptionBounds for RoutingSubscription<'_, M> {}
+
+impl<M> RoutingSubscription<'_, M> {
+    fn new() -> Self {
+        Self {
+            reads: Vec::new(),
+        }
+    }
+}
+
+impl<M: MessageBounds> Subscription<M> for RoutingSubscription<'_, M> {
+    fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
+        Box::pin(async move {
+            let reads = mem::take(&mut self.reads);
+            let ((result, subscription), _, mut remaining) = select_all(reads).await;
+            remaining.push(read(subscription));
+            self.reads = remaining;
+            result
+        })
+    }
+}
 
 struct Route<M: MessageBounds> {
     pattern: String,
@@ -124,8 +161,7 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
     }
 
     // Subscribe for a message with an subscriber function
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
-                           -> BoxFuture<'static, Result<()>> {
+    fn register(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
         let routes = self.routes.clone();
         let topic = topic.to_string();
 
@@ -140,15 +176,22 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
                     .collect()
             };
 
+            let mut subscription = RoutingSubscription::new();
             for route in matching {
                 for bus in route.buses.iter() {
-                    let _ = bus.register_subscriber(&topic,
-                                                    subscriber.clone()).await;
+                    match bus.register(&topic).await {
+                        Ok(sub) => {
+                            subscription.reads.push(read(sub));
+                        },
+                        Err(e) => {
+                            error!("Could not register subscription on topic {topic}: {e}");
+                        },
+                    }
                 }
                 break;  // Stop after match
             }
 
-            Ok(())
+            Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
         })
     }
 
@@ -173,7 +216,6 @@ mod tests {
     use super::*;
     use caryatid_sdk::mock_bus::MockBus;
     use config::{Config, FileFormat};
-    use futures::future::ready;
     use tracing::Level;
     use tracing_subscriber;
 
@@ -235,23 +277,18 @@ bus = ["foo", "bar"]
         let setup = TestSetup::<String>::new(config);
 
         // Subscribe
-        assert!(setup.bus.register_subscriber("test",
-                                              Arc::new(|_topic: &str, _message: Arc<String>| {
-                                                  Box::pin(ready(()))
-                                              }))
-                .await
-                .is_ok());
+        assert!(setup.bus.register("test").await.is_ok());
 
         // Check foo got it
-        let foo_subscribes = setup.mock_foo.subscribes.lock().await;
-        assert_eq!(foo_subscribes.len(), 1);
-        let foo_0 = &foo_subscribes[0];
+        let foo_subscriptions = setup.mock_foo.subscriptions.lock().await;
+        assert_eq!(foo_subscriptions.len(), 1);
+        let foo_0 = &foo_subscriptions[0];
         assert_eq!(foo_0.topic, "test");
 
         // Check bar got it
-        let bar_subscribes = setup.mock_bar.subscribes.lock().await;
-        assert_eq!(bar_subscribes.len(), 1);
-        let bar_0 = &bar_subscribes[0];
+        let bar_subscriptions = setup.mock_bar.subscriptions.lock().await;
+        assert_eq!(bar_subscriptions.len(), 1);
+        let bar_0 = &bar_subscriptions[0];
         assert_eq!(bar_0.topic, "test");
     }
 
@@ -267,22 +304,17 @@ bus = "foo"
         let setup = TestSetup::<String>::new(config);
 
         // Subscribe
-        assert!(setup.bus.register_subscriber("test",
-                                              Arc::new(|_topic: &str, _message: Arc<String>| {
-                                                  Box::pin(ready(()))
-                                              }))
-                .await
-                .is_ok());
+        assert!(setup.bus.register("test").await.is_ok());
 
         // Check foo got it
-        let foo_subscribes = setup.mock_foo.subscribes.lock().await;
-        assert_eq!(foo_subscribes.len(), 1);
-        let foo_0 = &foo_subscribes[0];
+        let foo_subscriptions = setup.mock_foo.subscriptions.lock().await;
+        assert_eq!(foo_subscriptions.len(), 1);
+        let foo_0 = &foo_subscriptions[0];
         assert_eq!(foo_0.topic, "test");
 
         // Check bar didn't get it
-        let bar_subscribes = setup.mock_bar.subscribes.lock().await;
-        assert_eq!(bar_subscribes.len(), 0);
+        let bar_subscriptions = setup.mock_bar.subscriptions.lock().await;
+        assert_eq!(bar_subscriptions.len(), 0);
     }
 
     #[tokio::test]

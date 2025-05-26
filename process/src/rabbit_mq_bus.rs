@@ -3,17 +3,52 @@ use lapin::{
     options::{BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions,
               QueueBindOptions, QueueDeclareOptions},
     types::FieldTable,
-    BasicProperties, Channel, Connection, ConnectionProperties,
+    BasicProperties, Channel, Connection, ConnectionProperties, Consumer,
 };
 use futures::StreamExt;
 use anyhow::{Result, Context};
 use config::Config;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use futures::future::{ready, BoxFuture};
-use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscriber};
+use futures::future::BoxFuture;
+use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
 use std::marker::PhantomData;
 use tracing::{info, error};
+
+struct RabbitMQSubscription<M> {
+    consumer: Consumer,
+    _phantom: PhantomData<M>,
+}
+
+impl<M: MessageBounds> SubscriptionBounds for RabbitMQSubscription<M> {}
+
+impl<M: MessageBounds> Subscription<M> for RabbitMQSubscription<M> {
+    fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
+        Box::pin(async move {
+            loop {
+                if let Some(delivery) = self.consumer.next().await {
+                    let delivery = delivery.with_context(|| "Error in consumer")?;
+
+                    // Acknowledge the message anyway, otherwise it stays around
+                    // forever
+                    delivery
+                        .ack(lapin::options::BasicAckOptions::default())
+                        .await.with_context(|| "Failed to acknowledge message")?;
+
+                    // Decode it
+                    match serde_cbor::de::from_slice::<M>(&delivery.data) {
+                        Ok(message) => {
+                            // Call the subscriber function with the message
+                            return Ok((delivery.routing_key.to_string(), Arc::new(message)));
+                        },
+                        Err(e) => error!("Invalid CBOR message received: {}", e)
+                    }
+                }
+            }
+        })
+    }
+}
+
 
 /// RabbitMQ message bus implementation
 pub struct RabbitMQBus<M: MessageBounds> {
@@ -103,14 +138,13 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
     }
 
     // Subscribe to a topic
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
-                           -> BoxFuture<'static, Result<()>> {
+    fn register(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
         // Clone over async boundary
         let connection = self.connection.clone();
         let topic = topic.to_string();
         let exchange = self.exchange.clone();
 
-        tokio::spawn(async move {
+        Box::pin(async move {
             // Create a new channel for this subscriber
             let channel = connection.lock()
                 .await
@@ -135,7 +169,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                 .await.with_context(|| "Failed to bind queue")?;
 
             // Start consuming messages from the queue
-            let mut consumer = channel
+            let consumer = channel
                 .basic_consume(
                     queue.name().as_str(),
                     "",
@@ -144,30 +178,11 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                 )
                 .await.with_context(|| "Failed to start consumer")?;
 
-            // Process each message received
-            while let Some(delivery) = consumer.next().await {
-                let delivery = delivery.with_context(|| "Error in consumer")?;
-
-                // Decode it
-                match serde_cbor::de::from_slice::<M>(&delivery.data) {
-                    Ok(message) => {
-                        // Call the subscriber function with the message
-                        subscriber(delivery.routing_key.as_str(), Arc::new(message)).await;
-                    },
-                    Err(e) => error!("Invalid CBOR message received: {}", e)
-                }
-
-                // Acknowledge the message anyway, otherwise it stays around
-                // forever
-                delivery
-                    .ack(lapin::options::BasicAckOptions::default())
-                    .await.with_context(|| "Failed to acknowledge message")?;
-            }
-
-            Ok::<(), anyhow::Error>(())  // Inform Rust what ? should return
-        });
-
-        Box::pin(ready(Ok(())))
+            Ok(Box::new(RabbitMQSubscription {
+                consumer,
+                _phantom: PhantomData,
+            }) as Box<dyn Subscription<M>>)
+        })
     }
 
     /// Shut down the bus connection

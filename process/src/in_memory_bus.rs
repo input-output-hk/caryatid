@@ -5,23 +5,40 @@ use anyhow::Result;
 use config::Config;
 use tracing::info;
 use futures::future::BoxFuture;
-use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscriber};
+use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
 use caryatid_sdk::match_topic::match_topic;
 
 const DEFAULT_SUBSCRIBER_QUEUE_SIZE: i64 = 10;
 
-/// Subscriber on a particular topic pattern
-struct PatternSubscriber<M: MessageBounds> {
+struct InMemorySubscription<M> {
+    receiver: mpsc::Receiver<(String, Arc<M>)>,
+}
+
+impl<M: MessageBounds> SubscriptionBounds for InMemorySubscription<M> {}
+
+impl<M: MessageBounds> Subscription<M> for InMemorySubscription<M> {
+    fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
+        Box::pin(async move {
+            loop {
+                if let Some(entry) = self.receiver.recv().await {
+                    return Ok(entry);
+                }
+            }
+        })
+    }
+}
+
+/// Subscriptions on a particular topic pattern
+struct PatternSubscription<M: MessageBounds> {
     pattern: String,
-    queue: mpsc::Sender<(Arc<Subscriber<M>>, String, Arc<M>)>,
-    subscriber: Arc<Subscriber<M>>,
+    queue: mpsc::Sender<(String, Arc<M>)>,
 }
 
 /// In-memory, zero-copy pub-sub bus
 pub struct InMemoryBus<M: MessageBounds> {
 
-    /// Subscribers
-    subscribers: Arc<Mutex<Vec<Arc<PatternSubscriber<M>>>>>,
+    /// Subscriptions
+    subscriptions: Arc<Mutex<Vec<Arc<PatternSubscription<M>>>>>,
 
     /// Queue size for subscriber
     subscriber_queue_size: usize,
@@ -34,11 +51,11 @@ impl<M: MessageBounds> InMemoryBus<M> {
         let subscriber_queue_size = config.get_int("subscriber-queue-size")
             .unwrap_or(DEFAULT_SUBSCRIBER_QUEUE_SIZE) as usize;
 
-        let subscribers: Arc<Mutex<Vec<Arc<PatternSubscriber<M>>>>> =
+        let subscriptions: Arc<Mutex<Vec<Arc<PatternSubscription<M>>>>> =
             Arc::new(Mutex::new(Vec::new()));
 
         InMemoryBus {
-            subscribers,
+            subscriptions,
             subscriber_queue_size,
         }
     }
@@ -49,24 +66,23 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
     /// Publish a message on a given topic
     fn publish(&self, topic: &str, message: Arc<M>)
                -> BoxFuture<'static, Result<()>> {
-        let subscribers = self.subscribers.clone();
+        let subscriptions = self.subscriptions.clone();
         let topic = topic.to_string();
         let message = message.clone();
 
         Box::pin(async move {
-            // Get matching subscribers, limiting lock duration
+            // Get matching subscriptions, limiting lock duration
             let matching: Vec<_> = {
-                subscribers.lock().await.iter()
+                subscriptions.lock().await.iter()
                     .filter(|patsub| match_topic(&patsub.pattern, &topic))
                     .map(Arc::clone)
                     .collect()
             };
 
             for patsub in matching {
-                let subscriber = patsub.subscriber.clone();
                 let topic = topic.clone();
                 let message = message.clone();
-                patsub.queue.send((subscriber, topic, message)).await?;
+                patsub.queue.send((topic, message)).await?;
             }
 
             Ok(())
@@ -74,43 +90,34 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
     }
 
     /// Subscribe for a message with an subscriber function
-    fn register_subscriber(&self, topic: &str, subscriber: Arc<Subscriber<M>>)
-                           -> BoxFuture<'static, Result<()>> {
-        let subscribers = self.subscribers.clone();
+    fn register(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
+        let subscriptions = self.subscriptions.clone();
         let topic = topic.to_string();
         let subscriber_queue_size = self.subscriber_queue_size;
 
         Box::pin(async move {
 
-            let (sender, mut receiver) =
-                mpsc::channel::<(Arc<Subscriber<M>>,
-                                 String,
-                                 Arc<M>)>(subscriber_queue_size);
+            let (sender, receiver) =
+                mpsc::channel::<(String, Arc<M>)>(subscriber_queue_size);
 
-            let mut subscribers = subscribers.lock().await;
-            subscribers.push(Arc::new(PatternSubscriber {
+            let mut subscriptions = subscriptions.lock().await;
+            subscriptions.push(Arc::new(PatternSubscription {
                 pattern: topic,
                 queue: sender,
-                subscriber: subscriber
             }));
-
-            tokio::spawn(async move {
-                while let Some((subscriber, topic, message)) = receiver.recv().await {
-                    subscriber(&topic, message.clone()).await;
-                }
-            });
-
-            Ok(())
+            Ok(Box::new(InMemorySubscription {
+                receiver,
+            }) as Box<dyn Subscription<M>>)
         })
     }
 
-    /// Shut down, clearing all subscribers
+    /// Shut down, clearing all subscriptions
     fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
-        let subscribers = self.subscribers.clone();
+        let subscriptions = self.subscriptions.clone();
 
         Box::pin(async move {
-            let mut subscribers = subscribers.lock().await;
-            subscribers.clear();
+            let mut subscriptions = subscriptions.lock().await;
+            subscriptions.clear();
             Ok(())
         })
     }
@@ -124,7 +131,6 @@ mod tests {
     use tracing_subscriber;
     use tokio::sync::Notify;
     use tokio::time::{timeout, Duration};
-    use futures::future::ready;
 
     // Helper to set up an in-memory bus from given config string
     struct TestSetup<M: MessageBounds> {
@@ -157,53 +163,47 @@ mod tests {
     #[tokio::test]
     async fn publish_subscribe_round_trip() {
         let setup = TestSetup::<String>::new("");
-        let notify = Arc::new(Notify::new());
 
         // Subscribe
-        let notify_clone = notify.clone();
-        assert!(setup.bus.register_subscriber(
-            "test",
-            Arc::new(move |_topic: &str, _message: Arc<String>| {
-                notify_clone.notify_one(); // Notify that the callback was triggered
-                Box::pin(ready(()))
-            }))
-                .await
-                .is_ok());
+        let subscription = setup.bus.register("test").await;
+        assert!(subscription.is_ok());
+        if let Ok(mut subscription) = subscription {
 
-        // Publish
-        assert!(setup.bus.publish("test", Arc::new("Hello, world!".to_string()))
-                .await
-                .is_ok());
+            // Publish
+            assert!(setup.bus.publish("test", Arc::new("Hello, world!".to_string()))
+                    .await
+                    .is_ok());
 
-        // Wait for it to be received, or timeout
-        assert!(timeout(Duration::from_millis(100), notify.notified()).await.is_ok(),
-                "Didn't receive the subscribed message");
+            // Read
+            let message = subscription.read().await;
+            assert!(message.is_ok());
+        }
     }
 
     #[tokio::test]
     async fn publish_subscribe_with_wrong_topic_doesnt_round_trip() {
         let setup = TestSetup::<String>::new("");
-        let notify = Arc::new(Notify::new());
 
         // Subscribe
-        let notify_clone = notify.clone();
-        assert!(setup.bus.register_subscriber(
-            "test",
-            Arc::new(move |_topic: &str, _message: Arc<String>| {
-                notify_clone.notify_one(); // Notify that the callback was triggered
-                Box::pin(ready(()))
-            }))
-                .await
-                .is_ok());
+        let subscription = setup.bus.register("test").await;
+        assert!(subscription.is_ok());
+        if let Ok(mut subscription) = subscription {
+            // Publish
+            assert!(setup.bus.publish("BOGUS", Arc::new("Hello, world!".to_string()))
+                    .await
+                    .is_ok());
 
-        // Publish
-        assert!(setup.bus.publish("BOGUS", Arc::new("Hello, world!".to_string()))
-                .await
-                .is_ok());
+            let notify = Arc::new(Notify::new());
+            let notify_clone = notify.clone();
+            tokio::spawn(async move {
+                let _ = subscription.read().await;
+                notify_clone.notify_one();
+            });
 
-        // Wait for it to be received, or timeout
-        assert!(timeout(Duration::from_millis(100), notify.notified()).await.is_err(),
+            // Wait for it to be received, or timeout
+            assert!(timeout(Duration::from_millis(100), notify.notified()).await.is_err(),
                 "Received the subscribed message when we shouldn't have!");
+        }
     }
 
 }
