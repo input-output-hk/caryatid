@@ -1,0 +1,18 @@
+# Top-level configuration for example pub-sub Caryatid process
+
+[module.subscriber]
+topic1 = "sample1.#"
+topic2 = "sample2.#"
+
+[module.publisher1]
+topic = "sample1.test"
+
+[module.publisher2]
+topic = "sample2.test"
+
+[message-bus.internal]
+class = "in-memory"
+
+[[message-router.route]]
+pattern = "#"
+bus = "internal"
