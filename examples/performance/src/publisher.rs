@@ -6,6 +6,7 @@ use anyhow::Result;
 use config::Config;
 use tracing::{info};
 use tokio::time::{sleep, Duration};
+use tokio::sync::watch::Sender;
 use futures::future::join_all;
 use crate::message::Message;
 
@@ -23,7 +24,7 @@ const DEFAULT_LENGTH: i64 = 100;
 
 impl Publisher {
 
-    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>, go_watcher: &Sender<bool>) -> Result<()> {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
@@ -37,17 +38,24 @@ impl Publisher {
 
         let data = "*".repeat(length.try_into().unwrap());
 
+        let mut gos = Vec::new();
+        for _thread in 1..=threads {
+            gos.push(go_watcher.subscribe());
+        }
         let message_bus = context.message_bus.clone();
         tokio::spawn(async move {
             let mut handles = Vec::new();
 
-            for thread in 1..=threads {
+            let mut thread = 1;
+            while let Some(mut go) = gos.pop() {
                 let message_bus = message_bus.clone();
                 let topic = topic.clone();
                 let arc_str = ArcStr::from(data.clone());
-                info!("Starting thread {thread}");
+                info!("Starting thread {}", thread + 1);
 
                 handles.push(tokio::spawn(async move {
+                    let _ = go.changed().await;
+
                     for _ in 1..=count {
                         // Avoid cloning the string and skewing the result
                         let message = Arc::new(Message::Data(arc_str.clone()));
@@ -55,6 +63,7 @@ impl Publisher {
                             .await.expect("Failed to publish message");
                     }
                 }));
+                thread += 1;
             }
 
             // Send the stop signal after they've all finished

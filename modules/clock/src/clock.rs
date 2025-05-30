@@ -7,6 +7,7 @@ use anyhow::Result;
 use config::Config;
 use tracing::{debug, error};
 use tokio::time::{interval_at, Duration, Instant};
+use tokio::sync::watch::Sender;
 use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 
@@ -26,11 +27,14 @@ pub struct Clock<M: From<ClockTickMessage> + MessageBounds>;
 
 impl<M: From<ClockTickMessage> + MessageBounds> Clock<M>
 {
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>, go_watcher: &Sender<bool>) -> Result<()> {
         let message_bus = context.message_bus.clone();
         let topic = config.get_string("topic").unwrap_or(DEFAULT_TOPIC.to_string());
 
+        let mut go = go_watcher.subscribe();
         tokio::spawn(async move {
+            let _ = go.changed().await;
+
             let start_instant = Instant::now();
             let start_system = SystemTime::now();
 

@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use config::Config;
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::watch::Sender;
 use tracing::{info, warn, error};
 
 mod in_memory_bus;
@@ -106,6 +107,7 @@ impl<M: MessageBounds> Process<M> {
     pub async fn run(&self) -> Result<()> {
 
         info!("Initialising...");
+        let go_sender = Sender::new(false);
 
         // Initialise all the modules from [module.<id>] configuration
         if let Ok(mod_confs) = self.config.get_table("module") {
@@ -120,7 +122,7 @@ impl<M: MessageBounds> Process<M> {
                     // Look up the module
                     if let Some(module) = self.modules.get(&module_name) {
                         info!("Initialising module {id}");
-                        module.init(self.context.clone(), Arc::new(modc)).unwrap();
+                        module.init(self.context.clone(), Arc::new(modc), &go_sender).unwrap();
                     }
                     else {
                         error!("Unrecognised module class: {module_name} in [module.{id}]");
@@ -134,6 +136,7 @@ impl<M: MessageBounds> Process<M> {
         info!("Running...");
 
         // Send startup message if required
+        let _ = go_sender.send(true);
         if let Ok(topic) = self.config.get_string("startup.topic") {
             self.context.message_bus.publish(&topic, Arc::new(M::default()))
                 .await

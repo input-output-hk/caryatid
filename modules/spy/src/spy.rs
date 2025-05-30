@@ -5,6 +5,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use tracing::{info, error};
+use tokio::sync::watch::Sender;
 
 /// Spy module
 /// Parameterised by the outer message enum used on the bus
@@ -17,7 +18,7 @@ pub struct Spy<M: MessageBounds + std::fmt::Debug>;
 
 impl<M: MessageBounds + std::fmt::Debug> Spy<M>
 {
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>, _: &Sender<bool>) -> Result<()> {
         match config.get_string("topic") {
             Ok(topic) => {
                 info!("Creating message spy on '{}'", topic);

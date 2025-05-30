@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use tracing::{info};
+use tokio::sync::watch::Sender;
 
 /// Standard message type
 type MType = serde_json::Value;
@@ -21,7 +22,7 @@ impl Subscriber {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
-    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>, _: &Sender<bool>) -> Result<()> {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());

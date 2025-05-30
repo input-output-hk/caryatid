@@ -110,9 +110,9 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl #impl_generics Module<#message_type> for #struct_name #type_generics #where_clause {
 
             // Implement init, calling down to struct's own
-            fn init(&self, context: Arc<Context<#message_type>>, config: Arc<Config>)
+            fn init(&self, context: Arc<Context<#message_type>>, config: Arc<Config>, go_watcher: &Sender<bool>)
                     -> anyhow::Result<()> {
-                #struct_name::init(self, context, config)
+                #struct_name::init(self, context, config, go_watcher)
             }
 
             // Get name using macro's attribute
