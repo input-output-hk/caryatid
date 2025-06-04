@@ -19,7 +19,7 @@ pub struct Playback<M: MessageBounds + for <'a> serde::Deserialize<'a>>;
 
 impl<M: MessageBounds + for<'a> serde::Deserialize<'a>> Playback<M>
 {
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
+    async fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
         match config.get_string("topic") {
             Ok(topic) => {
                 match config.get_string("path") {

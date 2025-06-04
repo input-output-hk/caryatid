@@ -121,7 +121,7 @@ impl<M: MessageBounds> Process<M> {
                     // Look up the module
                     if let Some(module) = self.modules.get(&module_name) {
                         info!("Initialising module {id}");
-                        module.init(self.context.clone(), Arc::new(modc)).unwrap();
+                        module.init(self.context.clone(), Arc::new(modc)).await.unwrap();
                     }
                     else {
                         error!("Unrecognised module class: {module_name} in [module.{id}]");

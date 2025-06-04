@@ -20,6 +20,7 @@ serde = { version = "1.0.214", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8.5"
 hex = "0.4.3"
+async-trait = "0.1.88"
 
 [dev-dependencies]
 tracing-subscriber = "0.3.19"

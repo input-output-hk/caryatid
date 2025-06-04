@@ -22,7 +22,7 @@ impl Publisher {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
-    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
+    async fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
 
         // Get configuration

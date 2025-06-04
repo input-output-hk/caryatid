@@ -107,12 +107,13 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input
 
         // Implement Module init etc.
+        #[caryatid_sdk::async_trait]
         impl #impl_generics Module<#message_type> for #struct_name #type_generics #where_clause {
 
             // Implement init, calling down to struct's own
-            fn init(&self, context: Arc<Context<#message_type>>, config: Arc<Config>)
+            async fn init(&self, context: Arc<Context<#message_type>>, config: Arc<Config>)
                     -> anyhow::Result<()> {
-                #struct_name::init(self, context, config)
+                #struct_name::init(self, context, config).await
             }
 
             // Get name using macro's attribute

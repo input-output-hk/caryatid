@@ -19,7 +19,7 @@ pub struct Requester;
 
 impl Requester {
 
-    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
+    async fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating requester on '{}'", topic);

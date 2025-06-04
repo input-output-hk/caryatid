@@ -33,7 +33,7 @@ impl Responder {
         Arc::new(message)
     }
 
-    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
+    async fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
 
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating responder on '{}'", topic);

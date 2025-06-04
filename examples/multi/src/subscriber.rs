@@ -3,8 +3,7 @@ use caryatid_sdk::{Context, Module, module};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
-use tracing::{info, error};
-use tokio::task;
+use tracing::info;
 
 /// Standard message type
 type MType = serde_json::Value;
@@ -22,7 +21,7 @@ impl Subscriber {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
-    async fn async_init(context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
+    async fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
         // Get configuration
         let topic1 = config.get_string("topic1").unwrap_or("test1".to_string());
         let topic2 = config.get_string("topic2").unwrap_or("test2".to_string());
@@ -46,16 +45,4 @@ impl Subscriber {
 
         Ok(())
     }
-
-    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
-        task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async move {
-                Self::async_init(context, config)
-                    .await.unwrap_or_else(|e| error!("Failed: {e}"));
-            })
-        });
-
-        Ok(())
-    }
 }
-

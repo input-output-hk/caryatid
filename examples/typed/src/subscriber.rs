@@ -19,7 +19,7 @@ impl Subscriber {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
-    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
+    async fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());

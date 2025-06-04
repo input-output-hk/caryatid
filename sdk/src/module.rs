@@ -5,10 +5,12 @@ use crate::message_bus::MessageBounds;
 use anyhow::Result;
 use config::Config;
 use std::sync::Arc;
+use async_trait::async_trait;
 
+#[async_trait]
 pub trait Module<M: MessageBounds>: Send + Sync {
     /// Initialise with the given global context, and local config
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()>;
+    async fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()>;
 
     // Functions implemented by the #[module] macro
     fn get_name(&self) -> &'static str;

@@ -17,7 +17,7 @@ pub struct Spy<M: MessageBounds + std::fmt::Debug>;
 
 impl<M: MessageBounds + std::fmt::Debug> Spy<M>
 {
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
+    async fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
         match config.get_string("topic") {
             Ok(topic) => {
                 info!("Creating message spy on '{}'", topic);

@@ -23,7 +23,7 @@ const DEFAULT_LENGTH: i64 = 100;
 
 impl Publisher {
 
-    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
+    async fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());

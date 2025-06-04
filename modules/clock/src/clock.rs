@@ -26,7 +26,7 @@ pub struct Clock<M: From<ClockTickMessage> + MessageBounds>;
 
 impl<M: From<ClockTickMessage> + MessageBounds> Clock<M>
 {
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
+    async fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
         let topic = config.get_string("topic").unwrap_or(DEFAULT_TOPIC.to_string());
 

@@ -10,6 +10,7 @@ pub mod correlation_bus;
 
 // Flattened re-exports
 pub use caryatid_macros::module;
+pub use async_trait::async_trait;
 pub use self::message_bus::MessageBounds;
 pub use self::message_bus::MessageBus;
 pub use self::message_bus::MessageBusExt;

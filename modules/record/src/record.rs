@@ -20,7 +20,7 @@ pub struct Record<M: MessageBounds + serde::Serialize>;
 
 impl<M: MessageBounds + serde::Serialize> Record<M>
 {
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
+    async fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
         match config.get_string("topic") {
             Ok(topic) => {
                 match config.get_string("path") {
