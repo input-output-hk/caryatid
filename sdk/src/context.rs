@@ -30,7 +30,12 @@ impl<M: MessageBounds> Context<M> {
     {
         let mut signal = self.startup_watch.subscribe();
         tokio::spawn(async move {
-            let _ = signal.changed().await;
+            loop {
+                let _ = signal.changed().await;
+                if *signal.borrow_and_update() {
+                    break;
+                }
+            }
             func.await
         })
     }

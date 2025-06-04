@@ -78,7 +78,7 @@ mod tests {
     use caryatid_sdk::mock_bus::MockBus;
     use tracing::Level;
     use tracing_subscriber;
-    use tokio::sync::{Notify, mpsc};
+    use tokio::sync::{Notify, mpsc, watch::Sender};
     use tokio::time::{timeout, Duration};
 
     // Message type which includes a ClockTickMessage
@@ -103,12 +103,13 @@ mod tests {
     // Helper to create a clock talking to a mock message bus
     struct TestSetup {
         bus: Arc<dyn MessageBus<Message>>,
-        module: Arc<dyn Module<Message>>
+        module: Arc<dyn Module<Message>>,
+        context: Arc<Context<Message>>,
     }
 
     impl TestSetup {
 
-        fn new(config_str: &str) -> Self {
+        async fn new(config_str: &str) -> Self {
 
             // Set up tracing
             let _ = tracing_subscriber::fmt()
@@ -126,28 +127,32 @@ mod tests {
                 .unwrap());
 
             // Create a context
-            let context = Arc::new(Context::new(config.clone(), bus.clone()));
+            let context = Arc::new(Context::new(config.clone(), bus.clone(), Sender::<bool>::new(false)));
 
             // Create the clock
             let clock = Clock::<Message>{
                 _marker: std::marker::PhantomData,
             };
-            assert!(clock.init(context, config).is_ok());
+            assert!(clock.init(context.clone(), config).await.is_ok());
 
-            Self { bus, module: Arc::new(clock) }
+            Self { bus, module: Arc::new(clock), context }
+        }
+
+        fn start(&self) {
+            let _ = self.context.startup_watch.send(true);
         }
     }
 
     #[tokio::test]
     async fn construct_a_clock() {
-        let setup = TestSetup::new("");
+        let setup = TestSetup::new("").await;
         assert_eq!(setup.module.get_name(), "clock");
         assert_eq!(setup.module.get_description(), "System clock");
     }
 
     #[tokio::test]
     async fn clock_sends_tick_messages() {
-        let setup = TestSetup::new("");
+        let setup = TestSetup::new("").await;
         let notify = Arc::new(Notify::new());
 
         // Register for clock.tick
@@ -158,6 +163,8 @@ mod tests {
                 notify_clone.notify_one();
             }
         }).is_ok());
+
+        setup.start();
 
         // Wait for it to be received, or timeout
         assert!(timeout(Duration::from_secs(1), notify.notified()).await.is_ok(),
@@ -170,7 +177,7 @@ mod tests {
 
     #[tokio::test]
     async fn clock_messages_have_increasing_times_and_ticks() {
-        let setup = TestSetup::new("topic = 'tick'"); // Also test configured topic
+        let setup = TestSetup::new("topic = 'tick'").await; // Also test configured topic
         let (tx, mut rx) = mpsc::channel(10);
 
         // Register for tick
@@ -180,6 +187,8 @@ mod tests {
                 let _ = tx.send(message).await;
             }
         }).is_ok());
+
+        setup.start();
 
         // Wait for the first message
         let first_res = timeout(Duration::from_secs(1), rx.recv()).await;

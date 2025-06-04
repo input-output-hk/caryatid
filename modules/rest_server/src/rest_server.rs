@@ -149,7 +149,7 @@ mod tests {
     use caryatid_sdk::correlation_bus::CorrelationBus;
     use tracing::{Level, debug};
     use tracing_subscriber;
-    use tokio::sync::Notify;
+    use tokio::sync::{Notify, watch::Sender};
     use tokio::time::{timeout, Duration};
     use std::net::TcpListener;
     use hyper::Client;
@@ -196,12 +196,13 @@ mod tests {
     // Helper to create a clock talking to a mock message bus
     struct TestSetup {
         bus: Arc<dyn MessageBus<Message>>,
-        module: Arc<dyn Module<Message>>
+        module: Arc<dyn Module<Message>>,
+        context: Arc<Context<Message>>,
     }
 
     impl TestSetup {
 
-        fn new(config_str: &str) -> Self {
+        async fn new(config_str: &str) -> Self {
 
             // Set up tracing
             let _ = tracing_subscriber::fmt()
@@ -227,24 +228,29 @@ mod tests {
                 .unwrap());
 
             // Create a context
-            let context = Arc::new(Context::new(config.clone(), correlation_bus.clone()));
+            let context = Arc::new(Context::new(config.clone(), correlation_bus.clone(), Sender::<bool>::new(false)));
 
             // Create the server
             let rest_server = RESTServer::<Message>{
                 _marker: std::marker::PhantomData,
             };
-            assert!( rest_server.init(context, config).is_ok());
+            assert!(rest_server.init(context.clone(), config).await.is_ok());
 
             Self {
                 bus: correlation_bus,
-                module: Arc::new(rest_server)
+                module: Arc::new(rest_server),
+                context
             }
+        }
+
+        fn start(&self) {
+            let _ = self.context.startup_watch.send(true);
         }
     }
 
     #[tokio::test]
     async fn construct_a_rest_server() {
-        let setup = TestSetup::new("");
+        let setup = TestSetup::new("").await;
         assert_eq!(setup.module.get_name(), "rest-server");
         assert_eq!(setup.module.get_description(), "REST server");
     }
@@ -260,7 +266,7 @@ mod tests {
 
         assert!(port > 0);
 
-        let setup = TestSetup::new(&format!("port = {port}"));
+        let setup = TestSetup::new(&format!("port = {port}")).await;
         let notify = Arc::new(Notify::new());
 
         // Register for rest.get.test
@@ -280,6 +286,8 @@ mod tests {
             notify_clone.notify_one();
             future::ready(Arc::new(Message::RESTResponse(response)))
         }).is_ok());
+
+        setup.start();
 
         // Let it get set up
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -312,7 +320,8 @@ mod tests {
 
         assert!(port > 0);
 
-        let _ = TestSetup::new(&format!("port = {port}"));
+        let setup = TestSetup::new(&format!("port = {port}")).await;
+        setup.start();
 
         // Let it get set up
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
