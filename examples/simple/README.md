@@ -42,7 +42,7 @@ Then in the [publisher](src/publisher.rs) you can see it asynchronously publishi
 a message:
 
 ```rust
-        tokio::spawn(async move {
+        context.run(async move {
 
             let test_message = Arc::new(json!({
                 "message": "Hello, world!",

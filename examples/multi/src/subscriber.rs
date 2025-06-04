@@ -33,7 +33,7 @@ impl Subscriber {
         info!("Creating subscription on '{}'", topic2);
         let mut subscription2 = context.message_bus.register(&topic2).await?;
 
-        tokio::spawn(async move {
+        context.run(async move {
             loop {
                 // Start reads of messages together to avoid delays later on
                 let (message1, message2) = (subscription1.read(), subscription2.read());

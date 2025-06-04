@@ -116,7 +116,7 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
             Ok::<_, Infallible>(response)
         };
 
-        tokio::spawn(async move {
+        context.run(async move {
 
             // Define the address to bind the server to
             let ip = config.get::<IpAddr>("address").unwrap_or(DEFAULT_IP);
