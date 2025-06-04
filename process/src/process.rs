@@ -98,7 +98,7 @@ impl<M: MessageBounds> Process<M> {
             routing_bus.clone()));
 
         // Create the shared context
-        let context = Arc::new(Context::new(config.clone(), correlation_bus.clone()));
+        let context = Arc::new(Context::new(config.clone(), correlation_bus.clone(), Sender::new(false)));
 
         Self { config, context, modules: HashMap::new() }
     }
@@ -107,7 +107,6 @@ impl<M: MessageBounds> Process<M> {
     pub async fn run(&self) -> Result<()> {
 
         info!("Initialising...");
-        let go_sender = Sender::new(false);
 
         // Initialise all the modules from [module.<id>] configuration
         if let Ok(mod_confs) = self.config.get_table("module") {
@@ -122,7 +121,7 @@ impl<M: MessageBounds> Process<M> {
                     // Look up the module
                     if let Some(module) = self.modules.get(&module_name) {
                         info!("Initialising module {id}");
-                        module.init(self.context.clone(), Arc::new(modc), &go_sender).unwrap();
+                        module.init(self.context.clone(), Arc::new(modc)).unwrap();
                     }
                     else {
                         error!("Unrecognised module class: {module_name} in [module.{id}]");
@@ -136,7 +135,7 @@ impl<M: MessageBounds> Process<M> {
         info!("Running...");
 
         // Send startup message if required
-        let _ = go_sender.send(true);
+        let _ = self.context.startup_watch.send(true);
         if let Ok(topic) = self.config.get_string("startup.topic") {
             self.context.message_bus.publish(&topic, Arc::new(M::default()))
                 .await

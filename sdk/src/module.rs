@@ -5,13 +5,13 @@ use crate::message_bus::MessageBounds;
 use anyhow::Result;
 use config::Config;
 use std::sync::Arc;
-use tokio::sync::watch::Sender;
 
 pub trait Module<M: MessageBounds>: Send + Sync {
-    /// Initialise with the given global context, local config, and go watcher
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>, go_watcher: &Sender<bool>) -> Result<()>;
+    /// Initialise with the given global context, and local config
+    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()>;
 
     // Functions implemented by the #[module] macro
     fn get_name(&self) -> &'static str;
     fn get_description(&self) -> &'static str;
 }
+

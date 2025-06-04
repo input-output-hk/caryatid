@@ -5,7 +5,6 @@ use anyhow::Result;
 use config::Config;
 use tracing::{info, error};
 use serde_json::json;
-use tokio::sync::watch::Sender;
 
 /// Standard message type
 type MType = serde_json::Value;
@@ -20,14 +19,12 @@ pub struct Requester;
 
 impl Requester {
 
-    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>, go_watcher: &Sender<bool>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating requester on '{}'", topic);
 
-        let mut go = go_watcher.subscribe();
-        tokio::spawn(async move {
-            let _ = go.changed().await;
+        context.run(async move {
 
             // Wait for responder to be ready
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;

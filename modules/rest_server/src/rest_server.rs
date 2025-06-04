@@ -6,7 +6,6 @@ use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
 use tracing::{info, error};
-use tokio::sync::watch::Sender;
 
 use axum::{
     body::Body,
@@ -40,7 +39,7 @@ pub struct RESTServer<M: From<RESTRequest> + GetRESTResponse + MessageBounds>;
 
 impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
 {
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>, _: &Sender<bool>) -> Result<()> {
+    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
 
         // Get topic prefix from config

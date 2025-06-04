@@ -7,7 +7,6 @@ use config::Config;
 use tracing::{info, error};
 use crate::message::Message;
 use futures::future;
-use tokio::sync::watch::Sender;
 
 /// Typed subscriber module
 #[module(
@@ -19,7 +18,7 @@ pub struct RESTHelloWorld;
 
 impl RESTHelloWorld {
 
-    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>, _: &Sender<bool>) -> Result<()> {
+    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
 
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating REST Hello, world! responder on '{}'", topic);

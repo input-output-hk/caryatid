@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use anyhow::{Error, Result};
 use config::Config;
 use tracing::{info, error};
-use tokio::sync::watch::Sender;
 
 /// Playback module
 /// Parameterised by the outer message enum used on the bus
@@ -20,7 +19,7 @@ pub struct Playback<M: MessageBounds + for <'a> serde::Deserialize<'a>>;
 
 impl<M: MessageBounds + for<'a> serde::Deserialize<'a>> Playback<M>
 {
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>, go_watcher: &Sender<bool>) -> Result<()> {
+    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
         match config.get_string("topic") {
             Ok(topic) => {
                 match config.get_string("path") {
@@ -32,11 +31,7 @@ impl<M: MessageBounds + for<'a> serde::Deserialize<'a>> Playback<M>
                             return Err(Error::msg("Path does not exist or is not directory for Playback module"))
                         }
                         info!("Creating message playback on '{}'", topic);
-                        let mut go = go_watcher.subscribe();
-                        tokio::spawn(async move {
-                            let _ = go.changed().await;
-                            Self::play_files(context, topic, path)
-                        });
+                        context.run(Self::play_files(context.clone(), topic, path));
                     },
                     _ => error!("No path given for Playback module"),
                 };

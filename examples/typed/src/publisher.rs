@@ -6,7 +6,6 @@ use config::Config;
 use tracing::{info};
 use serde_json::json;
 use crate::message::{Test, Message};
-use tokio::sync::watch::Sender;
 
 /// Typed publisher module
 #[module(
@@ -20,7 +19,7 @@ impl Publisher {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
-    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>, go_watcher: &Sender<bool>) -> Result<()> {
+    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
         let message_bus = context.message_bus.clone();
 
         // Get configuration
@@ -29,9 +28,7 @@ impl Publisher {
 
         // Send test messages to the message bus on 'sample_topic'
         // Let this run async
-        let mut go = go_watcher.subscribe();
-        tokio::spawn(async move {
-            let _ = go.changed().await;
+        context.run(async move {
 
             // Custom struct
             let test_message_1 = Message::Test(Test {

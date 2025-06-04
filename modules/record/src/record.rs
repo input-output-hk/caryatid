@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 use anyhow::{Error, Result};
 use config::Config;
 use tracing::{info, error};
-use tokio::sync::watch::Sender;
 
 /// Record module
 /// Parameterised by the outer message enum used on the bus
@@ -21,7 +20,7 @@ pub struct Record<M: MessageBounds + serde::Serialize>;
 
 impl<M: MessageBounds + serde::Serialize> Record<M>
 {
-    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>, _: &Sender<bool>) -> Result<()> {
+    fn init(&self, context: Arc<Context<M>>, config: Arc<Config>) -> Result<()> {
         match config.get_string("topic") {
             Ok(topic) => {
                 match config.get_string("path") {

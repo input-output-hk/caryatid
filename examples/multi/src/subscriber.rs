@@ -5,7 +5,6 @@ use anyhow::Result;
 use config::Config;
 use tracing::{info, error};
 use tokio::task;
-use tokio::sync::watch::Sender;
 
 /// Standard message type
 type MType = serde_json::Value;
@@ -48,7 +47,7 @@ impl Subscriber {
         Ok(())
     }
 
-    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>, _go_watcher: &Sender<bool>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
         task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
                 Self::async_init(context, config)

@@ -6,7 +6,6 @@ use config::Config;
 use tracing::{info, error};
 use chrono::Local;
 use crate::message::Message;
-use tokio::sync::watch::Sender;
 
 /// Typed subscriber module
 #[module(
@@ -20,7 +19,7 @@ impl Subscriber {
 
     // Implement the single initialisation function, with application
     // Context and this module's Config
-    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>, _: &Sender<bool>) -> Result<()> {
+    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());

@@ -5,7 +5,6 @@ use anyhow::Result;
 use config::Config;
 use tracing::{info};
 use serde_json::Value;
-use tokio::sync::watch::Sender;
 
 /// Standard message type
 type MType = serde_json::Value;
@@ -34,7 +33,7 @@ impl Responder {
         Arc::new(message)
     }
 
-    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>, _: &Sender<bool>) -> Result<()> {
+    fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
 
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating responder on '{}'", topic);

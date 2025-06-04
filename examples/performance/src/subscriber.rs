@@ -5,7 +5,7 @@ use anyhow::Result;
 use config::Config;
 use tracing::info;
 use tokio::time::Instant;
-use tokio::sync::{Mutex, watch::Sender};
+use tokio::sync::Mutex;
 use crate::message::Message;
 
 /// Performance test subscriber
@@ -24,7 +24,7 @@ struct Stats {
 
 impl Subscriber {
 
-    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>, _ :&Sender<bool>) -> Result<()> {
+    fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
 
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
