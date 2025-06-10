@@ -1,16 +1,16 @@
 //! Message bus wrapper which turns requests into individual publish/subscribes and
 //! correlates the results
-use tokio::sync::{Mutex, oneshot};
+use crate::message_bus::{MessageBounds, MessageBus, Subscription};
+use anyhow::{anyhow, Result};
+use config::Config;
+use futures::future::{ready, BoxFuture};
+use rand::Rng;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::oneshot::Sender;
-use anyhow::{Result, anyhow};
-use config::Config;
-use futures::future::{BoxFuture, ready};
-use crate::message_bus::{MessageBus, MessageBounds, Subscription};
-use tracing::{debug, info, error};
-use std::collections::{HashSet, HashMap};
-use rand::Rng;
+use tokio::sync::{oneshot, Mutex};
 use tokio::time::{timeout, Duration};
+use tracing::{debug, error, info};
 
 const DEFAULT_TIMEOUT: u64 = 5;
 
@@ -21,7 +21,6 @@ struct Request<M: MessageBounds> {
 
 /// Correlation bus
 pub struct CorrelationBus<M: MessageBounds> {
-
     /// Wrapped bus
     bus: Arc<dyn MessageBus<M>>,
 
@@ -36,10 +35,8 @@ pub struct CorrelationBus<M: MessageBounds> {
 }
 
 impl<M: MessageBounds> CorrelationBus<M> {
-
     /// Construct with config, wrapping the given bus
     pub fn new(config: &Config, bus: Arc<dyn MessageBus<M>>) -> Self {
-
         info!("Creating correlation bus");
 
         let timeout = config.get::<u64>("timeout").unwrap_or(DEFAULT_TIMEOUT);
@@ -49,14 +46,15 @@ impl<M: MessageBounds> CorrelationBus<M> {
             bus,
             response_subscribed: Arc::new(Mutex::new(HashSet::new())),
             requests: Arc::new(Mutex::new(HashMap::new())),
-            timeout
+            timeout,
         }
     }
 }
 
 impl<M> MessageBus<M> for CorrelationBus<M>
-  where M: MessageBounds {
-
+where
+    M: MessageBounds,
+{
     /// Publish a message on a given topic
     fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
         // Pass straight through
@@ -64,8 +62,7 @@ impl<M> MessageBus<M> for CorrelationBus<M>
     }
 
     /// Request a response on a given topic
-    fn request(&self, topic: &str, message: Arc<M>)-> BoxFuture<'static, Result<Arc<M>>> {
-
+    fn request(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<Arc<M>>> {
         let response_subscribed = self.response_subscribed.clone();
         let requests = self.requests.clone();
         let bus = self.bus.clone();
@@ -78,14 +75,12 @@ impl<M> MessageBus<M> for CorrelationBus<M>
         let request_id = hex::encode(random_bytes);
 
         Box::pin(async move {
-
             let request_topic = format!("{topic}.{request_id}");
             let response_pattern = format!("{topic}.*.response");
 
             // Have we already subscribed?
             let mut response_subscribed = response_subscribed.lock().await;
             if !response_subscribed.contains(&topic) {
-
                 // Remember we've done it
                 response_subscribed.insert(topic.clone());
 
@@ -95,8 +90,9 @@ impl<M> MessageBus<M> for CorrelationBus<M>
                 match bus.register(&response_pattern).await {
                     Ok(mut subscription) => {
                         tokio::spawn(async move {
-                            if let Ok((response_topic, response_message)) = subscription.read().await {
-
+                            if let Ok((response_topic, response_message)) =
+                                subscription.read().await
+                            {
                                 debug!("Correlator received response on {response_topic}");
                                 let response_topic = response_topic.to_owned();
 
@@ -104,20 +100,23 @@ impl<M> MessageBus<M> for CorrelationBus<M>
                                 if response_topic.starts_with(&topic) {
                                     let suffix = &response_topic[topic.len()..];
                                     if suffix.starts_with('.') && suffix.ends_with(".response") {
-                                        let response_id = &suffix[1..suffix.len()-9];
+                                        let response_id = &suffix[1..suffix.len() - 9];
                                         let requests = requests.clone();
                                         let response_id = response_id.to_owned();
 
                                         tokio::spawn(async move {
                                             let mut requests = requests.lock().await;
                                             if let Some(request) = requests.remove(&response_id) {
-                                                let _ = request.notify.send(Ok(response_message.clone()));
+                                                let _ = request
+                                                    .notify
+                                                    .send(Ok(response_message.clone()));
                                             } else {
-                                                error!("Unrecognised response ID in {response_topic}");
+                                                error!(
+                                                    "Unrecognised response ID in {response_topic}"
+                                                );
                                             }
                                         });
-                                    }
-                                    else {
+                                    } else {
                                         error!("No response ID found in {response_topic}");
                                     }
                                 } else {
@@ -127,18 +126,21 @@ impl<M> MessageBus<M> for CorrelationBus<M>
 
                             Box::pin(ready(()))
                         });
-                    },
+                    }
                     Err(e) => {
                         error!("Could not register subscription on topic {topic}: {e}");
-                    },
+                    }
                 }
             }
 
             // Record in-flight requests with a OneShot to recover the result
             let (notify_sender, notify_receiver) = oneshot::channel();
-            let request = Request { notify: notify_sender };
+            let request = Request {
+                notify: notify_sender,
+            };
 
-            { // Hold lock only for insert, otherwise deadlock!
+            {
+                // Hold lock only for insert, otherwise deadlock!
                 let mut requests = requests.lock().await;
                 requests.insert(request_id, request);
             }
@@ -150,9 +152,9 @@ impl<M> MessageBus<M> for CorrelationBus<M>
             match timeout(req_timeout, notify_receiver).await {
                 Ok(result) => match result {
                     Ok(res) => res,
-                    Err(e) => Err(anyhow!("Notify receive failed: {e}"))
-                }
-                Err(_) => Err(anyhow!("Request timed out"))
+                    Err(e) => Err(anyhow!("Notify receive failed: {e}")),
+                },
+                Err(_) => Err(anyhow!("Request timed out")),
             }
         })
     }
@@ -173,22 +175,20 @@ impl<M> MessageBus<M> for CorrelationBus<M>
 mod tests {
     use super::*;
     use crate::mock_bus::MockBus;
+    use crate::MessageBusExt;
     use config::{Config, FileFormat};
     use futures::future::ready;
-    use crate::MessageBusExt;
     use tracing::Level;
     use tracing_subscriber;
 
     // Helper to set up a correlation bus with a mock sub-bus, from given config string
     struct TestSetup<M: MessageBounds> {
         mock: Arc<MockBus<M>>,
-        bus: Arc<dyn MessageBus<M>>
+        bus: Arc<dyn MessageBus<M>>,
     }
 
     impl<M: MessageBounds> TestSetup<M> {
-
         fn new(config_str: &str) -> Self {
-
             // Set up tracing
             let _ = tracing_subscriber::fmt()
                 .with_max_level(Level::DEBUG)
@@ -216,7 +216,11 @@ mod tests {
         let setup = TestSetup::<String>::new("");
 
         // Send a message
-        assert!(setup.bus.publish("test", Arc::new("Hello, world!".to_string())).await.is_ok());
+        assert!(setup
+            .bus
+            .publish("test", Arc::new("Hello, world!".to_string()))
+            .await
+            .is_ok());
 
         // Check the mock got it
         let mock_publishes = setup.mock.publishes.lock().await;
@@ -245,18 +249,23 @@ mod tests {
         let setup = TestSetup::<String>::new("timeout = 1");
 
         // Register a handler on test
-        assert!(setup.bus.handle("test", |message: Arc<String>| {
-            info!("Subscriber got request {message}");
-            ready(Arc::new("Nice to meet you".to_string()))
-        }).is_ok());
+        assert!(setup
+            .bus
+            .handle("test", |message: Arc<String>| {
+                info!("Subscriber got request {message}");
+                ready(Arc::new("Nice to meet you".to_string()))
+            })
+            .is_ok());
 
         // Wait for responder to be ready
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Request with no response should timeout
-        assert!(setup.bus.request("test", Arc::new("Hello, world!".to_string()))
-                .await
-                .is_ok());
+        assert!(setup
+            .bus
+            .request("test", Arc::new("Hello, world!".to_string()))
+            .await
+            .is_ok());
     }
 
     #[tokio::test]
@@ -264,9 +273,11 @@ mod tests {
         let setup = TestSetup::<String>::new("timeout = 1");
 
         // Request with no response should timeout
-        assert!(setup.bus.request("test", Arc::new("Hello, world!".to_string()))
-                .await
-                .is_err());
+        assert!(setup
+            .bus
+            .request("test", Arc::new("Hello, world!".to_string()))
+            .await
+            .is_err());
     }
 
     #[tokio::test]

@@ -1,12 +1,12 @@
 //! Sample 'main' for a Caryatid process
 //! Loads and runs modules built with caryatid-sdk
 
-use caryatid_process::Process;
 use anyhow::Result;
-use config::{Config, File, Environment};
+use caryatid_process::Process;
+use config::{Config, Environment, File};
+use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber;
-use std::sync::Arc;
 
 // Modules in the same crate
 mod subscriber;
@@ -21,18 +21,19 @@ type MType = serde_json::Value;
 /// Standard main
 #[tokio::main]
 pub async fn main() -> Result<()> {
-
     // Initialise tracing
     tracing_subscriber::fmt::init();
 
     info!("Caryatid modular framework - simple pub-sub process");
 
     // Read the config
-    let config = Arc::new(Config::builder()
-        .add_source(File::with_name("simple"))
-        .add_source(Environment::with_prefix("CARYATID"))
-        .build()
-        .unwrap());
+    let config = Arc::new(
+        Config::builder()
+            .add_source(File::with_name("simple"))
+            .add_source(Environment::with_prefix("CARYATID"))
+            .build()
+            .unwrap(),
+    );
 
     // Create the process
     let mut process = Process::<MType>::create(config).await;
@@ -48,4 +49,3 @@ pub async fn main() -> Result<()> {
     info!("Exiting");
     Ok(())
 }
-

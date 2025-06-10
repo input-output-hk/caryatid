@@ -6,9 +6,7 @@ use std::collections::HashMap;
 pub fn get_sub_config(config: &Config, path: &str) -> Config {
     // Try to extract the sub-config as a table
     match config.get_table(path) {
-        Ok(sub_table) => {
-            config_from_value(sub_table)
-        },
+        Ok(sub_table) => config_from_value(sub_table),
         Err(_) => {
             // Return an empty Config if the path doesn't exist
             Config::default()

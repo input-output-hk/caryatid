@@ -1,9 +1,9 @@
 //! Simple Caraytid module - subscriber side
-use caryatid_sdk::{Context, MessageBusExt, Module, module};
-use std::sync::Arc;
 use anyhow::Result;
+use caryatid_sdk::{module, Context, MessageBusExt, Module};
 use config::Config;
-use tracing::{info};
+use std::sync::Arc;
+use tracing::info;
 
 /// Standard message type
 type MType = serde_json::Value;
@@ -18,23 +18,21 @@ type MType = serde_json::Value;
 pub struct Subscriber;
 
 impl Subscriber {
-
     // Implement the single initialisation function, with application
     // Context and this module's Config
     async fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
-
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating subscriber on '{}'", topic);
 
         // Register a subscriber on the message bus to listen for messages
         // Messages are passed as JSON objects, in an Arc
-        context.message_bus.subscribe(&topic,
-                                      |message: Arc<serde_json::Value>| async move {
-           info!("Received: {:?}", message);
-        })?;
+        context
+            .message_bus
+            .subscribe(&topic, |message: Arc<serde_json::Value>| async move {
+                info!("Received: {:?}", message);
+            })?;
 
         Ok(())
     }
 }
-

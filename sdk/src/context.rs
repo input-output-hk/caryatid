@@ -1,10 +1,10 @@
 // Shared context passed to each module
 
-use std::sync::Arc;
-use config::Config;
 use crate::message_bus::{MessageBounds, MessageBus};
+use config::Config;
 use std::fmt;
 use std::future::Future;
+use std::sync::Arc;
 use tokio::sync::watch::Sender;
 use tokio::task;
 
@@ -20,7 +20,11 @@ impl<M: MessageBounds> Context<M> {
         message_bus: Arc<dyn MessageBus<M>>,
         startup_watch: Sender<bool>,
     ) -> Self {
-        Self { config, message_bus, startup_watch }
+        Self {
+            config,
+            message_bus,
+            startup_watch,
+        }
     }
 
     pub fn run<T, F>(&self, func: F) -> task::JoinHandle<T>
@@ -44,7 +48,6 @@ impl<M: MessageBounds> Context<M> {
 /// Minimal implementation of Debug for tracing
 impl<M: MessageBounds> fmt::Debug for Context<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Context")
-            .finish()
+        f.debug_struct("Context").finish()
     }
 }

@@ -3,7 +3,6 @@
 /// REST request message
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RESTRequest {
-
     /// HTTP method: GET, POST etc.
     pub method: String,
 
@@ -14,13 +13,12 @@ pub struct RESTRequest {
     pub path_elements: Vec<String>,
 
     /// Request body (if any)
-    pub body: String
+    pub body: String,
 }
 
 /// REST response message
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RESTResponse {
-
     /// HTTP response code
     pub code: u16,
 

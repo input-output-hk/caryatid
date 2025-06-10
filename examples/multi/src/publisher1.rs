@@ -1,10 +1,10 @@
 //! Sample Caraytid module - publisher side
-use caryatid_sdk::{Context, Module, module};
-use std::sync::Arc;
 use anyhow::Result;
+use caryatid_sdk::{module, Context, Module};
 use config::Config;
-use tracing::{info};
 use serde_json::json;
+use std::sync::Arc;
+use tracing::info;
 
 /// Standard message type
 type MType = serde_json::Value;
@@ -19,7 +19,6 @@ type MType = serde_json::Value;
 pub struct Publisher;
 
 impl Publisher {
-
     // Implement the single initialisation function, with application
     // Context and this module's Config
     async fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
@@ -32,18 +31,18 @@ impl Publisher {
         // Send a test JSON message to the message bus on 'sample_topic'
         // Let this run async
         context.run(async move {
-
             let test_message = Arc::new(json!({
                 "message": "Hello, world! from publisher #1",
             }));
 
             info!("Sending {:?}", test_message);
 
-            message_bus.publish(&topic, test_message)
-                .await.expect("Failed to publish message");
+            message_bus
+                .publish(&topic, test_message)
+                .await
+                .expect("Failed to publish message");
         });
 
         Ok(())
     }
 }
-

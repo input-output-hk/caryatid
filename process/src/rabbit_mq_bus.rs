@@ -1,19 +1,21 @@
 //! MessageBus implementation for RabbitMQ
+use anyhow::{Context, Result};
+use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
+use config::Config;
+use futures::future::BoxFuture;
+use futures::StreamExt;
 use lapin::{
-    options::{BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions,
-              QueueBindOptions, QueueDeclareOptions},
+    options::{
+        BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions, QueueBindOptions,
+        QueueDeclareOptions,
+    },
     types::FieldTable,
     BasicProperties, Channel, Connection, ConnectionProperties, Consumer,
 };
-use futures::StreamExt;
-use anyhow::{Result, Context};
-use config::Config;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use futures::future::BoxFuture;
-use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
-use std::marker::PhantomData;
-use tracing::{info, error};
+use tracing::{error, info};
 
 struct RabbitMQSubscription<M> {
     consumer: Consumer,
@@ -33,15 +35,16 @@ impl<M: MessageBounds> Subscription<M> for RabbitMQSubscription<M> {
                     // forever
                     delivery
                         .ack(lapin::options::BasicAckOptions::default())
-                        .await.with_context(|| "Failed to acknowledge message")?;
+                        .await
+                        .with_context(|| "Failed to acknowledge message")?;
 
                     // Decode it
                     match serde_cbor::de::from_slice::<M>(&delivery.data) {
                         Ok(message) => {
                             // Call the subscriber function with the message
                             return Ok((delivery.routing_key.to_string(), Arc::new(message)));
-                        },
-                        Err(e) => error!("Invalid CBOR message received: {}", e)
+                        }
+                        Err(e) => error!("Invalid CBOR message received: {}", e),
                     }
                 }
             }
@@ -49,25 +52,25 @@ impl<M: MessageBounds> Subscription<M> for RabbitMQSubscription<M> {
     }
 }
 
-
 /// RabbitMQ message bus implementation
 pub struct RabbitMQBus<M: MessageBounds> {
-    connection: Arc<Mutex<Connection>>,  // RabbitMQ connection
-    channel: Arc<Mutex<Channel>>,        // RabbitMQ outgoing channel
-    exchange: String,                    // Exchange name
-    _phantom: PhantomData<M>,            // Required to associate with <M> (eww)
+    connection: Arc<Mutex<Connection>>, // RabbitMQ connection
+    channel: Arc<Mutex<Channel>>,       // RabbitMQ outgoing channel
+    exchange: String,                   // Exchange name
+    _phantom: PhantomData<M>,           // Required to associate with <M> (eww)
 }
 
 impl<M: MessageBounds> RabbitMQBus<M> {
-
     // New
     pub async fn new(config: &Config) -> Result<Self> {
         // Connect to RabbitMQ server
-        let url = config.get_string("url")
+        let url = config
+            .get_string("url")
             .unwrap_or("amqp://127.0.0.1:5672/%2f".to_string());
         info!("Connecting to RabbitMQ at {}", url);
 
-        let props = ConnectionProperties::default().with_executor(tokio_executor_trait::Tokio::current());
+        let props =
+            ConnectionProperties::default().with_executor(tokio_executor_trait::Tokio::current());
         let connection = Connection::connect(&url, props)
             .await
             .with_context(|| "Can't create RabbitMQ connection")?;
@@ -75,7 +78,8 @@ impl<M: MessageBounds> RabbitMQBus<M> {
         info!("RabbitMQ connected");
 
         // Get exchange name
-        let exchange_name = config.get_string("exchange")
+        let exchange_name = config
+            .get_string("exchange")
             .unwrap_or("caryatid".to_string());
 
         // Create a channel for outgoing messages
@@ -105,8 +109,8 @@ impl<M: MessageBounds> RabbitMQBus<M> {
 }
 
 /// Implement MessageBus trait
-impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
-    MessageBus<M> for RabbitMQBus<M>
+impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned> MessageBus<M>
+    for RabbitMQBus<M>
 {
     /// Publish a message on a topic
     fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
@@ -146,16 +150,22 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
 
         Box::pin(async move {
             // Create a new channel for this subscriber
-            let channel = connection.lock()
+            let channel = connection
+                .lock()
                 .await
                 .create_channel()
-                .await.with_context(|| "Failed to create channel")?;
+                .await
+                .with_context(|| "Failed to create channel")?;
 
             // Declare the queue
             let queue = channel
-                .queue_declare(&topic, QueueDeclareOptions::default(),
-                               FieldTable::default())
-                .await.with_context(|| "Failed to declare queue")?;
+                .queue_declare(
+                    &topic,
+                    QueueDeclareOptions::default(),
+                    FieldTable::default(),
+                )
+                .await
+                .with_context(|| "Failed to declare queue")?;
 
             // Bind the queue to the exchange with the specified pattern
             channel
@@ -166,7 +176,8 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                     QueueBindOptions::default(),
                     FieldTable::default(),
                 )
-                .await.with_context(|| "Failed to bind queue")?;
+                .await
+                .with_context(|| "Failed to bind queue")?;
 
             // Start consuming messages from the queue
             let consumer = channel
@@ -176,7 +187,8 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
                     BasicConsumeOptions::default(),
                     FieldTable::default(),
                 )
-                .await.with_context(|| "Failed to start consumer")?;
+                .await
+                .with_context(|| "Failed to start consumer")?;
 
             Ok(Box::new(RabbitMQSubscription {
                 consumer,

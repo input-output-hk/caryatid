@@ -1,12 +1,11 @@
 //! Generic MessageBus trait for any pub-sub bus
-use futures::future::{BoxFuture, Future, ready};
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use futures::future::{ready, BoxFuture, Future};
 use std::sync::Arc;
 use tracing::error;
 
 /// Subscriber pattern function types - takes topic and message
-pub type Subscriber<M> = dyn Fn(&str, Arc<M>) ->
-    BoxFuture<'static, ()> + Send + Sync + 'static;
+pub type Subscriber<M> = dyn Fn(&str, Arc<M>) -> BoxFuture<'static, ()> + Send + Sync + 'static;
 
 pub trait SubscriptionBounds: Send {}
 pub trait Subscription<M>: SubscriptionBounds {
@@ -16,33 +15,45 @@ pub trait Subscription<M>: SubscriptionBounds {
 /// Message quality-of-service
 #[derive(Clone, Copy)]
 pub enum QoS {
-    Normal,       // Normal messages generated one at a time
-    Bulk,         // Messages generated quickly in large volumes
+    Normal, // Normal messages generated one at a time
+    Bulk,   // Messages generated quickly in large volumes
 }
 
 /// Message bounds trait (awaiting trait aliases)
-pub trait MessageBounds: Send + Sync + Clone + Default +
-    serde::Serialize + serde::de::DeserializeOwned + 'static {}
-impl<T: Send + Sync + Clone + Default + serde::Serialize +
-     serde::de::DeserializeOwned + 'static> MessageBounds for T {}
+pub trait MessageBounds:
+    Send + Sync + Clone + Default + serde::Serialize + serde::de::DeserializeOwned + 'static
+{
+}
+impl<
+        T: Send + Sync + Clone + Default + serde::Serialize + serde::de::DeserializeOwned + 'static,
+    > MessageBounds for T
+{
+}
 
 /// Generic MessageBus trait
 pub trait MessageBus<M: MessageBounds>: Send + Sync {
-
     /// Publish a message with normal QoS
     /// Note async but not defined as such because this is used dynamically
     fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>>;
 
     /// Publish a message with given QoS
-    fn publish_with_qos(&self, topic: &str, message: Arc<M>, _qos: QoS)
-                        -> BoxFuture<'static, Result<()>>
-    { self.publish(topic, message) }
+    fn publish_with_qos(
+        &self,
+        topic: &str,
+        message: Arc<M>,
+        _qos: QoS,
+    ) -> BoxFuture<'static, Result<()>> {
+        self.publish(topic, message)
+    }
 
     /// Request/response - as publish() but returns a result
     /// Note only implemented in CorrelationBus
-    fn request(&self, _topic: &str, _message: Arc<M>)
-               -> BoxFuture<'static, anyhow::Result<Arc<M>>> {
-       Box::pin(ready(Err(anyhow!("Not implemented"))))
+    fn request(
+        &self,
+        _topic: &str,
+        _message: Arc<M>,
+    ) -> BoxFuture<'static, anyhow::Result<Arc<M>>> {
+        Box::pin(ready(Err(anyhow!("Not implemented"))))
     }
 
     /// Register with the bus
@@ -72,30 +83,27 @@ pub trait MessageBusExt<M: MessageBounds> {
 }
 
 impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
-
     fn subscribe<F, Fut>(&self, topic: &str, subscriber: F) -> Result<()>
     where
         F: Fn(Arc<M>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static
-     {
+        Fut: Future<Output = ()> + Send + 'static,
+    {
         let arc_self = self.clone();
         let topic = topic.to_string();
 
         tokio::spawn(async move {
             let arc_subscriber: Arc<Subscriber<M>> =
-                Arc::new(move |_topic: &str, message: Arc<M>| {
-                    Box::pin(subscriber(message))
-                });
+                Arc::new(move |_topic: &str, message: Arc<M>| Box::pin(subscriber(message)));
 
             match arc_self.register(&topic).await {
                 Ok(mut subscription) => {
                     while let Ok((topic, message)) = subscription.read().await {
                         arc_subscriber(&topic, message.clone()).await;
                     }
-                },
+                }
                 Err(e) => {
                     error!("Could not register subscription on topic {topic}: {e}");
-                },
+                }
             }
         });
 
@@ -112,20 +120,18 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
 
         tokio::spawn(async move {
             let arc_self_2 = arc_self.clone();
-            let arc_subscriber: Arc<Subscriber<M>> =
-                Arc::new(move |topic, message: Arc<M>| {
+            let arc_subscriber: Arc<Subscriber<M>> = Arc::new(move |topic, message: Arc<M>| {
+                let arc_self = arc_self_2.clone();
+                let handler = handler.clone();
+                let response_topic = topic.to_owned() + ".response";
 
-                    let arc_self = arc_self_2.clone();
-                    let handler = handler.clone();
-                    let response_topic = topic.to_owned() + ".response";
-
-                    Box::pin(async move {
-                        let response = handler(message).await;
-                        if let Err(e) = arc_self.publish(&response_topic, response.clone()).await {
-                            error!("Response on {response_topic} failed {e} - timed out?");
-                        }
-                    })
-                });
+                Box::pin(async move {
+                    let response = handler(message).await;
+                    if let Err(e) = arc_self.publish(&response_topic, response.clone()).await {
+                        error!("Response on {response_topic} failed {e} - timed out?");
+                    }
+                })
+            });
 
             // Subscribe for all request IDs in this topic
             let request_pattern = format!("{topic}.*");
@@ -134,14 +140,13 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
                     while let Ok((topic, message)) = subscription.read().await {
                         arc_subscriber(&topic, message).await;
                     }
-                },
+                }
                 Err(e) => {
                     error!("Could not register subscription on topic {topic}: {e}");
-                },
+                }
             }
         });
 
         Ok(())
     }
 }
-

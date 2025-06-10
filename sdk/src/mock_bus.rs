@@ -1,16 +1,16 @@
 //! Mock message bus for tests
+use crate::match_topic::match_topic;
+use crate::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
+use anyhow::Result;
+use futures::future::BoxFuture;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use futures::future::BoxFuture;
-use anyhow::Result;
 use tokio::sync::{Mutex, Notify};
 use tracing::debug;
-use crate::message_bus::{MessageBus, MessageBounds, Subscription, SubscriptionBounds};
-use crate::match_topic::match_topic;
 
 pub struct PublishRecord<M: MessageBounds> {
     pub topic: String,
-    pub message: Arc<M>
+    pub message: Arc<M>,
 }
 
 #[derive(Clone)]
@@ -35,7 +35,10 @@ impl<M> MockSubscription<M> {
     }
 
     pub async fn push(&self, topic: &str, message: Arc<M>) {
-        self.messages.lock().await.push_back((topic.to_string(), message));
+        self.messages
+            .lock()
+            .await
+            .push_back((topic.to_string(), message));
         self.notify.notify_one();
     }
 }
@@ -56,7 +59,7 @@ impl<M: MessageBounds> Subscription<M> for MockSubscription<M> {
 pub struct MockBus<M: MessageBounds> {
     pub publishes: Arc<Mutex<Vec<PublishRecord<M>>>>,
     pub subscriptions: Arc<Mutex<Vec<SubscriptionRecord<M>>>>,
-    pub shutdowns: Arc<Mutex<u16>>,           // just count them
+    pub shutdowns: Arc<Mutex<u16>>, // just count them
 }
 
 impl<M: MessageBounds> MockBus<M> {
@@ -70,23 +73,22 @@ impl<M: MessageBounds> MockBus<M> {
 }
 
 impl<M> MessageBus<M> for MockBus<M>
-where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
-
+where
+    M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned,
+{
     fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
-
         debug!("Mock publish on {topic}");
         let publishes = self.publishes.clone();
         let subscriptions = self.subscriptions.clone();
         let topic = topic.to_string();
 
         Box::pin(async move {
-
             // Limit lock because we can be re-entrant
             {
                 let mut publishes = publishes.lock().await;
                 publishes.push(PublishRecord {
                     topic: topic.clone(),
-                    message: message.clone()
+                    message: message.clone(),
                 });
             }
 
@@ -134,4 +136,3 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         })
     }
 }
-

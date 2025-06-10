@@ -4,7 +4,6 @@
 ///   * - match one word
 ///   # - match zero or more words
 pub fn match_topic(pattern: &str, topic: &str) -> bool {
-
     let pattern_parts: Vec<&str> = pattern.split('.').collect();
     let topic_parts: Vec<&str> = topic.split('.').collect();
 
@@ -12,7 +11,6 @@ pub fn match_topic(pattern: &str, topic: &str) -> bool {
     let mut j = 0;
 
     while i < pattern_parts.len() && j < topic_parts.len() {
-
         match pattern_parts[i] {
             // * matches exactly one word
             "*" => {
@@ -30,8 +28,10 @@ pub fn match_topic(pattern: &str, topic: &str) -> bool {
                 // Try to match the next part of the pattern to any
                 // subsequent part of the topic
                 while j < topic_parts.len() {
-                    if match_topic(&pattern_parts[i + 1..].join("."),
-                                   &topic_parts[j..].join(".")) {
+                    if match_topic(
+                        &pattern_parts[i + 1..].join("."),
+                        &topic_parts[j..].join("."),
+                    ) {
                         return true;
                     }
                     j += 1;
@@ -48,7 +48,7 @@ pub fn match_topic(pattern: &str, topic: &str) -> bool {
             }
 
             // No match
-            _ => return false
+            _ => return false,
         }
     }
 
