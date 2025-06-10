@@ -123,7 +123,7 @@ impl<M: MessageBounds> MessageBusExt<M> for Arc<dyn MessageBus<M>> {
             let arc_subscriber: Arc<Subscriber<M>> = Arc::new(move |topic, message: Arc<M>| {
                 let arc_self = arc_self_2.clone();
                 let handler = handler.clone();
-                let response_topic = topic.to_owned() + ".response";
+                let response_topic = format!("response.{topic}");
 
                 Box::pin(async move {
                     let response = handler(message).await;

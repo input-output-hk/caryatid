@@ -76,7 +76,7 @@ where
 
         Box::pin(async move {
             let request_topic = format!("{topic}.{request_id}");
-            let response_pattern = format!("{topic}.*.response");
+            let response_pattern = format!("response.{topic}.*");
 
             // Have we already subscribed?
             let mut response_subscribed = response_subscribed.lock().await;
@@ -97,10 +97,10 @@ where
                                 let response_topic = response_topic.to_owned();
 
                                 // Check it matches the request topic
-                                if response_topic.starts_with(&topic) {
-                                    let suffix = &response_topic[topic.len()..];
-                                    if suffix.starts_with('.') && suffix.ends_with(".response") {
-                                        let response_id = &suffix[1..suffix.len() - 9];
+                                if response_topic.starts_with("response.") {
+                                    let suffix = &response_topic[9..];
+                                    if suffix.starts_with(&topic) && suffix.len() > topic.len() {
+                                        let response_id = &suffix[topic.len()+1..];
                                         let requests = requests.clone();
                                         let response_id = response_id.to_owned();
 
