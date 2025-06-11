@@ -111,7 +111,7 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         })
     }
 
-    fn register(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
+    fn subscribe(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
         let topic = topic.to_string();
         Box::pin(async move {
             debug!("Mock subscribe on {topic}");
@@ -125,6 +125,10 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         })
     }
 
+    fn unsubscribe(&self, _subscription: Box<dyn Subscription<M>>) {
+        // !TODO
+    }
+
     fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
         let shutdowns = self.shutdowns.clone();
         Box::pin(async move {
@@ -135,3 +139,82 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
     }
 }
 
+// -- Tests --
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tracing::Level;
+    use tracing_subscriber;
+
+    // Helper to set up a correlation bus with a mock sub-bus, from given config string
+    struct TestSetup<M: MessageBounds> {
+        mock: Arc<MockBus<M>>,
+    }
+
+    impl<M: MessageBounds> TestSetup<M> {
+
+        fn new(config_str: &str) -> Self {
+
+            // Set up tracing
+            let _ = tracing_subscriber::fmt()
+                .with_max_level(Level::DEBUG)
+                .with_test_writer()
+                .try_init();
+
+            // Create mock bus
+            let mock = Arc::new(MockBus::<M>::new());
+
+            Self { mock }
+        }
+    }
+
+    #[tokio::test]
+    async fn publish_passes_straight_through() {
+        let setup = TestSetup::<String>::new("");
+
+        // Send a message
+        assert!(setup.mock.publish("test", Arc::new("Hello, world!".to_string())).await.is_ok());
+
+        // Check the mock got it
+        let mock_publishes = setup.mock.publishes.lock().await;
+        assert_eq!(mock_publishes.len(), 1);
+        let pub0 = &mock_publishes[0];
+        assert_eq!(pub0.topic, "test");
+        assert_eq!(pub0.message.as_ref(), "Hello, world!");
+    }
+
+    #[tokio::test]
+    async fn subscribe_passes_straight_through() {
+        let setup = TestSetup::<String>::new("");
+
+        // Subscribe
+        let _subscription = setup.mock.subscribe("test").await;
+
+        // Check the mock got it
+        let mock_subscriptions = setup.mock.subscriptions.lock().await;
+        assert_eq!(mock_subscriptions.len(), 1);
+        let sub0 = &mock_subscriptions[0];
+        assert_eq!(sub0.topic, "test");
+    }
+
+    #[tokio::test]
+    async fn request_times_out_with_no_response() {
+        let setup = TestSetup::<String>::new("timeout = 1");
+
+        // Request with no response should timeout
+        assert!(setup.mock.request("test", Arc::new("Hello, world!".to_string()))
+                .await
+                .is_err());
+    }
+
+    #[tokio::test]
+    async fn shutdown_is_passed_to_sub_bus() {
+        let setup = TestSetup::<String>::new("");
+
+        // Shut it down
+        assert!(setup.mock.shutdown().await.is_ok());
+
+        // Check the mock got it
+        assert_eq!(*setup.mock.shutdowns.lock().await, 1);
+    }
+}
