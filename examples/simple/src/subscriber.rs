@@ -1,5 +1,5 @@
 //! Simple Caraytid module - subscriber side
-use caryatid_sdk::{Context, MessageBusExt, Module, module};
+use caryatid_sdk::{Context, Module, module};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
@@ -29,10 +29,13 @@ impl Subscriber {
 
         // Register a subscriber on the message bus to listen for messages
         // Messages are passed as JSON objects, in an Arc
-        context.message_bus.subscribe(&topic,
-                                      |message: Arc<serde_json::Value>| async move {
-           info!("Received: {:?}", message);
-        })?;
+        let mut subscription = context.subscribe(&topic).await?;
+        context.run(async move {
+            loop {
+                let Ok((_, message)) = subscription.read().await else { return; };
+                info!("Received: {:?}", message);
+            }
+        });
 
         Ok(())
     }

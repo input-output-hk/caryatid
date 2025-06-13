@@ -74,7 +74,6 @@ impl<M: From<ClockTickMessage> + MessageBounds> Clock<M>
 mod tests {
     use super::*;
     use config::{Config, FileFormat};
-    use caryatid_sdk::{MessageBus, MessageBusExt};
     use caryatid_sdk::mock_bus::MockBus;
     use tracing::Level;
     use tracing_subscriber;
@@ -102,7 +101,6 @@ mod tests {
 
     // Helper to create a clock talking to a mock message bus
     struct TestSetup {
-        bus: Arc<dyn MessageBus<Message>>,
         module: Arc<dyn Module<Message>>,
         context: Arc<Context<Message>>,
     }
@@ -117,14 +115,14 @@ mod tests {
                 .with_test_writer()
                 .try_init();
 
-            // Create mock bus
-            let bus = Arc::new(MockBus::<Message>::new());
-
             // Parse config
             let config = Arc::new(Config::builder()
                 .add_source(config::File::from_str(config_str, FileFormat::Toml))
                 .build()
                 .unwrap());
+
+            // Create mock bus
+            let bus = Arc::new(MockBus::<Message>::new(&config));
 
             // Create a context
             let context = Arc::new(Context::new(config.clone(), bus.clone(), Sender::<bool>::new(false)));
@@ -135,7 +133,7 @@ mod tests {
             };
             assert!(clock.init(context.clone(), config).await.is_ok());
 
-            Self { bus, module: Arc::new(clock), context }
+            Self { module: Arc::new(clock), context }
         }
 
         fn start(&self) {
@@ -157,12 +155,15 @@ mod tests {
 
         // Register for clock.tick
         let notify_clone = notify.clone();
-        assert!(setup.bus.subscribe("clock.tick", move |_message: Arc<Message>| {
-            let notify_clone = notify_clone.clone();
-            async move {
+        let subscription = setup.context.subscribe("clock.tick").await;
+        assert!(subscription.is_ok());
+        let Ok(mut subscription) = subscription else { return; };
+        setup.context.run(async move {
+            loop {
+                let Ok(_) = subscription.read().await else { return; };
                 notify_clone.notify_one();
             }
-        }).is_ok());
+        });
 
         setup.start();
 
@@ -181,12 +182,15 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(10);
 
         // Register for tick
-        assert!(setup.bus.subscribe("tick", move |message: Arc<Message>| {
-            let tx = tx.clone();
-            async move {
+        let subscription = setup.context.subscribe("tick").await;
+        assert!(subscription.is_ok());
+        let Ok(mut subscription) = subscription else { return; };
+        setup.context.run(async move {
+            loop {
+                let Ok((_, message)) = subscription.read().await else { return; };
                 let _ = tx.send(message).await;
             }
-        }).is_ok());
+        });
 
         setup.start();
 

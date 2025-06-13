@@ -1,5 +1,5 @@
 //! REST server Caraytid module - simple /hello responder
-use caryatid_sdk::{Context, MessageBusExt, Module, module};
+use caryatid_sdk::{Context, Module, module};
 use caryatid_module_rest_server::messages::RESTResponse;
 use std::sync::Arc;
 use anyhow::Result;
@@ -23,7 +23,7 @@ impl RESTHelloWorld {
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating REST Hello, world! responder on '{}'", topic);
 
-        context.message_bus.handle(&topic, |message: Arc<Message>| {
+        context.handle(&topic, |message: Arc<Message>| {
             let response = match message.as_ref() {
                 Message::RESTRequest(request) => {
                     info!("REST hello world received {} {}", request.method, request.path);
@@ -36,7 +36,7 @@ impl RESTHelloWorld {
             };
 
             future::ready(Arc::new(Message::RESTResponse(response)))
-        })?;
+        });
 
         Ok(())
     }

@@ -6,7 +6,6 @@ use config::Config;
 use crate::message_bus::{MessageBounds, MessageBus};
 use std::fmt;
 use std::future::Future;
-use futures::future::BoxFuture;
 use tokio::sync::watch::Sender;
 use tokio::task;
 use tracing::error;
@@ -44,21 +43,20 @@ impl<M: MessageBounds> Context<M> {
         })
     }
 
-    pub fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
-        self.message_bus.publish(topic, message)
+    pub async fn publish(&self, topic: &str, message: Arc<M>) -> Result<()> {
+        self.message_bus.publish(topic, message).await
     }
 
-    pub fn request(&self, topic: &str, message: Arc<M>)
-               -> BoxFuture<anyhow::Result<Arc<M>>> {
-        self.message_bus.request(topic, message)
+    pub async fn request(&self, topic: &str, message: Arc<M>) -> Result<Arc<M>> {
+        self.message_bus.request(topic, message).await
     }
 
-    pub fn subscribe(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
-        self.message_bus.subscribe(topic)
+    pub async fn subscribe(&self, topic: &str) -> Result<Box<dyn Subscription<M>>> {
+        self.message_bus.subscribe(topic).await
     }
 
-    pub fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>) {
-        self.message_bus.unsubscribe(subscription)
+    pub async fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>) {
+        self.message_bus.unsubscribe(subscription).await
     }
 
     pub fn handle<F, Fut>(&self, topic: &str, handler: F) -> task::JoinHandle<()>
@@ -121,14 +119,16 @@ mod tests {
                 .with_test_writer()
                 .try_init();
 
-            // Create mock bus
-            let mock = Arc::new(MockBus::<M>::new());
-
             // Create context
             let config = Config::builder()
                 .add_source(config::File::from_str(config_str, FileFormat::Toml))
                 .build()
                 .unwrap();
+
+            // Create mock bus
+            let mock = Arc::new(MockBus::<M>::new(&config));
+
+            // Create context
             let context = Arc::new(Context::<M>::new(Arc::new(config), mock, Sender::new(false)));
 
             Self { context }
@@ -137,7 +137,7 @@ mod tests {
 
     #[tokio::test]
     async fn request_succeeds_with_response() {
-        let setup = TestSetup::<String>::new("timeout = 1");
+        let setup = TestSetup::<String>::new("request-timeout = 1");
 
         // Register a handler on test
         setup.context.handle("test", |message: Arc<String>| {
@@ -145,7 +145,7 @@ mod tests {
             ready(Arc::new("Nice to meet you".to_string()))
         });
 
-        setup.context.startup_watch.send(true);
+        let _ = setup.context.startup_watch.send(true);
 
         // Wait for responder to be ready
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

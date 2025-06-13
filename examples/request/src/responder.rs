@@ -1,5 +1,5 @@
 //! Simple Caraytid module - responder side
-use caryatid_sdk::{Context, MessageBusExt, Module, module};
+use caryatid_sdk::{Context, Module, module};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
@@ -37,7 +37,7 @@ impl Responder {
 
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating responder on '{}'", topic);
-        context.message_bus.handle(&topic, Self::handler)?;
+        context.handle(&topic, Self::handler);
 
         Ok(())
     }

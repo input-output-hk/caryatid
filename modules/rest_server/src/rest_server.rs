@@ -144,9 +144,7 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M>
 mod tests {
     use super::*;
     use config::{Config, FileFormat};
-    use caryatid_sdk::{MessageBus, MessageBusExt};
     use caryatid_sdk::mock_bus::MockBus;
-    use caryatid_sdk::correlation_bus::CorrelationBus;
     use tracing::{Level, debug};
     use tracing_subscriber;
     use tokio::sync::{Notify, watch::Sender};
@@ -195,7 +193,6 @@ mod tests {
 
     // Helper to create a clock talking to a mock message bus
     struct TestSetup {
-        bus: Arc<dyn MessageBus<Message>>,
         module: Arc<dyn Module<Message>>,
         context: Arc<Context<Message>>,
     }
@@ -210,25 +207,17 @@ mod tests {
                 .with_test_writer()
                 .try_init();
 
-            // Create mock bus
-            let mock_bus = Arc::new(MockBus::<Message>::new());
-
-            // Create correlation wrapper
-            let cb_config = Config::builder()
-                .add_source(config::File::from_str("timeout=1", FileFormat::Toml))
-                .build()
-                .unwrap();
-            let correlation_bus = Arc::new(CorrelationBus::<Message>::new(
-                &cb_config, mock_bus.clone()));
-
             // Parse config
             let config = Arc::new(Config::builder()
                 .add_source(config::File::from_str(config_str, FileFormat::Toml))
                 .build()
                 .unwrap());
 
+            // Create mock bus
+            let mock_bus = Arc::new(MockBus::<Message>::new(&config));
+
             // Create a context
-            let context = Arc::new(Context::new(config.clone(), correlation_bus.clone(), Sender::<bool>::new(false)));
+            let context = Arc::new(Context::new(config.clone(), mock_bus.clone(), Sender::<bool>::new(false)));
 
             // Create the server
             let rest_server = RESTServer::<Message>{
@@ -237,7 +226,6 @@ mod tests {
             assert!(rest_server.init(context.clone(), config).await.is_ok());
 
             Self {
-                bus: correlation_bus,
                 module: Arc::new(rest_server),
                 context
             }
@@ -271,7 +259,7 @@ mod tests {
 
         // Register for rest.get.test
         let notify_clone = notify.clone();
-        assert!(setup.bus.handle("rest.get.test", move |message: Arc<Message>| {
+        setup.context.handle("rest.get.test", move |message: Arc<Message>| {
             let response = match message.as_ref() {
                 Message::RESTRequest(request) => {
                     info!("REST hello world received {} {}", request.method, request.path);
@@ -285,7 +273,7 @@ mod tests {
 
             notify_clone.notify_one();
             future::ready(Arc::new(Message::RESTResponse(response)))
-        }).is_ok());
+        });
 
         setup.start();
 
@@ -320,7 +308,7 @@ mod tests {
 
         assert!(port > 0);
 
-        let setup = TestSetup::new(&format!("port = {port}")).await;
+        let setup = TestSetup::new(&format!("port = {port}\nrequest-timeout = 1")).await;
         setup.start();
 
         // Let it get set up
@@ -329,7 +317,7 @@ mod tests {
         // Request it
         let client = Client::new();
         let uri = format!("http://127.0.0.1:{}/test", port).parse().unwrap();
-        // Note long enough timeout for correlation_bus to timeout above
+        // Note long enough timeout for bus to timeout above
         match timeout(Duration::from_secs(2), client.get(uri)).await {
             Ok(Ok(response)) => {
                 debug!("HTTP response: {:?}", response);

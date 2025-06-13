@@ -1,9 +1,9 @@
 //! Generic MessageBus trait for any pub-sub bus
 use futures::future::BoxFuture;
 use anyhow::{anyhow, Result};
-use rand::Rng;
 use std::sync::Arc;
 use tokio::time::{Duration, timeout};
+use async_trait::async_trait;
 
 /// Subscriber pattern function types - takes topic and message
 pub type Subscriber<M> = dyn Fn(&str, Arc<M>) ->
@@ -21,46 +21,47 @@ impl<T: Send + Sync + Clone + Default + serde::Serialize +
      serde::de::DeserializeOwned + 'static> MessageBounds for T {}
 
 /// Generic MessageBus trait
+ #[async_trait]
 pub trait MessageBus<M: MessageBounds>: Send + Sync {
 
-    /// Publish a message with normal QoS
+    /// Publish a message
     /// Note async but not defined as such because this is used dynamically
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>>;
+    async fn publish(&self, topic: &str, message: Arc<M>) -> Result<()>;
+
+    /// Get the request_timeout
+    fn request_timeout(&self) -> Duration;
 
     /// Request/response - as publish() but returns a result
-    fn request(&self, topic: &str, message: Arc<M>)
-               -> BoxFuture<anyhow::Result<Arc<M>>> {
+    async fn request(&self, topic: &str, message: Arc<M>) -> Result<Arc<M>> {
         let topic = topic.to_string();
-        let mut rng = rand::thread_rng();
-        let random_bytes: [u8; 8] = rng.gen();
-        Box::pin(async move {
-            let request_id = hex::encode(random_bytes);
-            let response_topic = format!("{topic}.{request_id}.response");
-            let request_topic = format!("{topic}.{request_id}.request");
-            let mut subscription = self.subscribe(&response_topic).await?;
-            let subscription_future = subscription.read();
-            self.publish(&request_topic, message).await?;
-            // !TODO: get timeout from somewhere configurable
-            let result = timeout(Duration::from_secs(5u64), subscription_future).await;
-            self.unsubscribe(subscription);
-            match result {
-                Ok(Ok((_, message))) => {
-                    Ok(message)
-                },
-                Ok(Err(e)) => {
-                    Err(e)
-                },
-                _ => Err(anyhow!("Request timed out"))
-            }
-        })
+        let mut random_bytes = [0u8; 8];
+        rand::fill(&mut random_bytes);
+        let request_timeout = self.request_timeout();
+        let request_id = hex::encode(random_bytes);
+        let response_topic = format!("{topic}.{request_id}.response");
+        let request_topic = format!("{topic}.{request_id}.request");
+        let mut subscription = self.subscribe(&response_topic).await?;
+        let subscription_future = subscription.read();
+        self.publish(&request_topic, message).await?;
+        let result = timeout(request_timeout, subscription_future).await;
+        self.unsubscribe(subscription).await;
+        match result {
+            Ok(Ok((_, message))) => {
+                Ok(message)
+            },
+            Ok(Err(e)) => {
+                Err(e)
+            },
+            _ => Err(anyhow!("Request timed out"))
+        }
     }
 
     /// Subscribe to a topic on the bus
-    fn subscribe(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>>;
+    async fn subscribe(&self, topic: &str) -> Result<Box<dyn Subscription<M>>>;
 
     /// Unsubscribe from the bus
-    fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>);
+    async fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>);
 
     /// Shut down
-    fn shutdown(&self) -> BoxFuture<'static, anyhow::Result<()>>;
+    async fn shutdown(&self) -> Result<()>;
 }

@@ -1,5 +1,5 @@
 //! Simple Caraytid module - subscriber side
-use caryatid_sdk::{Context, MessageBusExt, Module, module};
+use caryatid_sdk::{Context, Module, module};
 use std::sync::Arc;
 use anyhow::Result;
 use config::Config;
@@ -27,28 +27,36 @@ impl Subscriber {
 
         // Register a subscriber on the message bus to listen for messages
         // Message is an enum of all possible messages
-        context.message_bus.subscribe(&topic, |message: Arc<Message>| async move {
-            match message.as_ref()
-            {
-                Message::None(_) => error!("Received empty message!"),
-                Message::Test(test) => info!("Received test: {} {}", test.data, test.number),
-                Message::String(s) => info!("Received string {s}"),
-                Message::JSON(json) => info!("Received JSON {:?}", json),
-                _ => error!("Unexpected message type")
+        let mut subscription = context.subscribe(&topic).await?;
+        context.run(async move {
+            loop {
+                let Ok((_, message)) = subscription.read().await else { return; };
+                match message.as_ref()
+                {
+                    Message::None(_) => error!("Received empty message!"),
+                    Message::Test(test) => info!("Received test: {} {}", test.data, test.number),
+                    Message::String(s) => info!("Received string {s}"),
+                    Message::JSON(json) => info!("Received JSON {:?}", json),
+                    _ => error!("Unexpected message type")
+                }
             }
-        })?;
+        });
 
         // Register for clock ticks too
-        context.message_bus.subscribe("clock.tick", |message: Arc<Message>| async move {
-            match message.as_ref() {
-                Message::Clock(message) => {
-                    let localtime = message.time.with_timezone(&Local);
-                    info!("The time sponsored by Caryatid is {}",
-                          localtime.format("%H:%M:%S").to_string())
-                },
-                _ => error!("Unexpected clock message type")
+        let mut subscription = context.subscribe("clock.tick").await?;
+        context.run(async move {
+            loop {
+                let Ok((_, message)) = subscription.read().await else { return; };
+                match message.as_ref() {
+                    Message::Clock(message) => {
+                        let localtime = message.time.with_timezone(&Local);
+                        info!("The time sponsored by Caryatid is {}",
+                              localtime.format("%H:%M:%S").to_string())
+                    },
+                    _ => error!("Unexpected clock message type")
+                }
             }
-        })?;
+        });
 
         Ok(())
     }

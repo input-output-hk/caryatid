@@ -4,9 +4,14 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 use anyhow::Result;
 use tokio::sync::{Mutex, Notify};
+use tokio::time::Duration;
 use tracing::debug;
 use crate::message_bus::{MessageBus, MessageBounds, Subscription, SubscriptionBounds};
 use crate::match_topic::match_topic;
+use config::Config;
+use async_trait::async_trait;
+
+const DEFAULT_REQUEST_TIMEOUT: u64 = 5;
 
 pub struct PublishRecord<M: MessageBounds> {
     pub topic: String,
@@ -17,26 +22,50 @@ pub struct PublishRecord<M: MessageBounds> {
 pub struct MockSubscription<M> {
     messages: Arc<Mutex<VecDeque<(String, Arc<M>)>>>,
     notify: Arc<Notify>,
+    deregister: Arc<dyn Fn() + Send + Sync>,
 }
 
+fn make_deregister<M: Send + Sync + 'static>(
+    subscriptions: Arc<Mutex<Vec<SubscriptionRecord<M>>>>,
+    target_messages: Arc<Mutex<VecDeque<(String, Arc<M>)>>>,
+) -> Arc<dyn Fn() + Send + Sync> {
+    let deregister = move || {
+        let subscriptions = Arc::clone(&subscriptions);
+        let target_messages = Arc::clone(&target_messages);
+
+        // Spawn async task to avoid `.await` in sync closure
+        tokio::spawn(async move {
+            let mut subs = subscriptions.lock().await;
+            subs.retain(|rec| !Arc::ptr_eq(&rec.messages, &target_messages));
+        });
+    };
+    Arc::new(deregister)
+}
+
+impl<M> Drop for MockSubscription<M> {
+    fn drop(&mut self) {
+        (self.deregister)();
+    }
+}
+
+#[derive(Clone)]
 pub struct SubscriptionRecord<M> {
     pub topic: String,
-    pub subscription: MockSubscription<M>,
+    messages: Arc<Mutex<VecDeque<(String, Arc<M>)>>>,
+    notify: Arc<Notify>,
 }
 
 impl<M: MessageBounds> SubscriptionBounds for MockSubscription<M> {}
 
-impl<M> MockSubscription<M> {
-    pub fn new() -> Self {
+impl<M: MessageBounds> MockSubscription<M> {
+    pub fn new(subscriptions: Arc<Mutex<Vec<SubscriptionRecord<M>>>>) -> Self {
+        let messages = Arc::new(Mutex::new(VecDeque::new()));
+        let deregister = make_deregister(subscriptions, messages.clone());
         Self {
-            messages: Arc::new(Mutex::new(VecDeque::new())),
+            messages,
             notify: Arc::new(Notify::new()),
+            deregister,
         }
-    }
-
-    pub async fn push(&self, topic: &str, message: Arc<M>) {
-        self.messages.lock().await.push_back((topic.to_string(), message));
-        self.notify.notify_one();
     }
 }
 
@@ -57,85 +86,88 @@ pub struct MockBus<M: MessageBounds> {
     pub publishes: Arc<Mutex<Vec<PublishRecord<M>>>>,
     pub subscriptions: Arc<Mutex<Vec<SubscriptionRecord<M>>>>,
     pub shutdowns: Arc<Mutex<u16>>,           // just count them
+    request_timeout: Duration,
 }
 
 impl<M: MessageBounds> MockBus<M> {
-    pub fn new() -> Self {
+    pub fn new(config: &Config) -> Self {
+        let timeout = config.get::<u64>("request-timeout").unwrap_or(DEFAULT_REQUEST_TIMEOUT);
+        let timeout = Duration::from_secs(timeout);
+
         Self {
             publishes: Arc::new(Mutex::new(Vec::new())),
             subscriptions: Arc::new(Mutex::new(Vec::new())),
             shutdowns: Arc::new(Mutex::new(0)),
+            request_timeout: timeout,
         }
     }
 }
 
+#[async_trait]
 impl<M> MessageBus<M> for MockBus<M>
 where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
 
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
+    async fn publish(&self, topic: &str, message: Arc<M>) -> Result<()> {
 
         debug!("Mock publish on {topic}");
-        let publishes = self.publishes.clone();
-        let subscriptions = self.subscriptions.clone();
         let topic = topic.to_string();
 
-        Box::pin(async move {
+        // Limit lock because we can be re-entrant
+        {
+            let mut publishes = self.publishes.lock().await;
+            publishes.push(PublishRecord {
+                topic: topic.clone(),
+                message: message.clone(),
+            });
+        }
 
-            // Limit lock because we can be re-entrant
-            {
-                let mut publishes = publishes.lock().await;
-                publishes.push(PublishRecord {
-                    topic: topic.clone(),
-                    message: message.clone()
-                });
-            }
-
-            // Send to all subscriptions if topic matches
-            // Copy relevant subscriptions before calling them to avoid deadlock if a subscription
-            // does another publish (as handle() does)
-            let mut relevant_subscriptions: Vec<MockSubscription<M>> = Vec::new();
-            {
-                let subscriptions = subscriptions.lock().await;
-                for sub in subscriptions.iter() {
-                    if match_topic(&sub.topic, &topic) {
-                        relevant_subscriptions.push(sub.subscription.clone())
-                    }
+        // Send to all subscriptions if topic matches
+        // Copy relevant subscriptions before calling them to avoid deadlock if a subscription
+        // does another publish (as handle() does)
+        let mut relevant_subscriptions: Vec<SubscriptionRecord<M>> = Vec::new();
+        {
+            let subscriptions = self.subscriptions.lock().await;
+            for sub in subscriptions.iter() {
+                if match_topic(&sub.topic, &topic) {
+                    relevant_subscriptions.push(sub.clone())
                 }
             }
+        }
 
-            for sub in relevant_subscriptions.iter() {
-                sub.push(&topic, message.clone()).await;
-            }
+        for sub in relevant_subscriptions.iter() {
+            sub.messages.lock().await.push_back((topic.to_string(), message.clone()));
+            sub.notify.notify_one();
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 
-    fn subscribe(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
+    fn request_timeout(&self) -> Duration {
+        self.request_timeout
+    }
+
+    async fn subscribe(&self, topic: &str) -> Result<Box<dyn Subscription<M>>> {
         let topic = topic.to_string();
-        Box::pin(async move {
-            debug!("Mock subscribe on {topic}");
-            let mut subscriptions = self.subscriptions.lock().await;
-            let subscription = MockSubscription::new();
-            subscriptions.push(SubscriptionRecord {
-                topic: topic.to_string(),
-                subscription: subscription.clone(),
-            });
-            Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
-        })
+        debug!("Mock subscribe on {topic}");
+        let mut subscriptions = self.subscriptions.lock().await;
+        let subscription = MockSubscription::new(self.subscriptions.clone());
+        subscriptions.push(SubscriptionRecord {
+            topic: topic.to_string(),
+            messages: subscription.messages.clone(),
+            notify: subscription.notify.clone(),
+        });
+        Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
     }
 
-    fn unsubscribe(&self, _subscription: Box<dyn Subscription<M>>) {
-        // !TODO
+    async fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>) {
+        drop(subscription);
     }
 
-    fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
+    async fn shutdown(&self) -> Result<()> {
         let shutdowns = self.shutdowns.clone();
-        Box::pin(async move {
-            let mut shutdowns = shutdowns.lock().await;
-            *shutdowns += 1;
-            Ok(())
-        })
+        let mut shutdowns = shutdowns.lock().await;
+        *shutdowns += 1;
+        Ok(())
     }
 }
 
@@ -145,6 +177,8 @@ mod tests {
     use super::*;
     use tracing::Level;
     use tracing_subscriber;
+    use config::FileFormat;
+    use tokio::time::sleep;
 
     // Helper to set up a correlation bus with a mock sub-bus, from given config string
     struct TestSetup<M: MessageBounds> {
@@ -161,8 +195,14 @@ mod tests {
                 .with_test_writer()
                 .try_init();
 
-            // Create mock bus
-            let mock = Arc::new(MockBus::<M>::new());
+            // Parse config
+            let config = Config::builder()
+                .add_source(config::File::from_str(config_str, FileFormat::Toml))
+                .build()
+                .unwrap();
+
+            // Create the bus
+            let mock = Arc::new(MockBus::<M>::new(&config));
 
             Self { mock }
         }
@@ -188,18 +228,43 @@ mod tests {
         let setup = TestSetup::<String>::new("");
 
         // Subscribe
-        let _subscription = setup.mock.subscribe("test").await;
+        let subscription = setup.mock.subscribe("test").await;
 
         // Check the mock got it
         let mock_subscriptions = setup.mock.subscriptions.lock().await;
         assert_eq!(mock_subscriptions.len(), 1);
         let sub0 = &mock_subscriptions[0];
         assert_eq!(sub0.topic, "test");
+        drop(subscription);
+    }
+
+    #[tokio::test]
+    async fn unsubscribe_removes_subscription() {
+        let setup = TestSetup::<String>::new("");
+
+        // Subscribe
+        let subscription = setup.mock.subscribe("test").await;
+        assert!(subscription.is_ok());
+        let Ok(subscription) = subscription else { return; };
+
+        // Check the mock got it
+        let mock_subscriptions = setup.mock.subscriptions.lock().await;
+        assert_eq!(mock_subscriptions.len(), 1);
+        let sub0 = &mock_subscriptions[0];
+        assert_eq!(sub0.topic, "test");
+        drop(mock_subscriptions);
+
+        setup.mock.unsubscribe(subscription).await;
+
+        // Check the mock removed it, after waiting a little because it's async
+        sleep(Duration::from_millis(100)).await;
+        let mock_subscriptions = setup.mock.subscriptions.lock().await;
+        assert_eq!(mock_subscriptions.len(), 0);
     }
 
     #[tokio::test]
     async fn request_times_out_with_no_response() {
-        let setup = TestSetup::<String>::new("timeout = 1");
+        let setup = TestSetup::<String>::new("request-timeout = 1");
 
         // Request with no response should timeout
         assert!(setup.mock.request("test", Arc::new("Hello, world!".to_string()))
