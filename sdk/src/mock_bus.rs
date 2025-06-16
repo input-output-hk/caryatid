@@ -1,11 +1,10 @@
 //! Mock message bus for tests
 use crate::match_topic::match_topic;
 use crate::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use futures::future::BoxFuture;
-use std::collections::VecDeque;
 use std::sync::Arc;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{mpsc, Mutex};
 use tracing::debug;
 
 pub struct PublishRecord<M: MessageBounds> {
@@ -13,45 +12,31 @@ pub struct PublishRecord<M: MessageBounds> {
     pub message: Arc<M>,
 }
 
-#[derive(Clone)]
 pub struct MockSubscription<M> {
-    messages: Arc<Mutex<VecDeque<(String, Arc<M>)>>>,
-    notify: Arc<Notify>,
+    topic: String,
+    receiver: mpsc::UnboundedReceiver<(String, Arc<M>)>,
 }
 
 pub struct SubscriptionRecord<M> {
     pub topic: String,
-    pub subscription: MockSubscription<M>,
+    pub sender: mpsc::UnboundedSender<(String, Arc<M>)>,
 }
 
 impl<M: MessageBounds> SubscriptionBounds for MockSubscription<M> {}
 
 impl<M> MockSubscription<M> {
-    pub fn new() -> Self {
-        Self {
-            messages: Arc::new(Mutex::new(VecDeque::new())),
-            notify: Arc::new(Notify::new()),
-        }
-    }
-
-    pub async fn push(&self, topic: &str, message: Arc<M>) {
-        self.messages
-            .lock()
-            .await
-            .push_back((topic.to_string(), message));
-        self.notify.notify_one();
+    pub fn new(topic: String, receiver: mpsc::UnboundedReceiver<(String, Arc<M>)>) -> Self {
+        Self { topic, receiver }
     }
 }
 
 impl<M: MessageBounds> Subscription<M> for MockSubscription<M> {
     fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
         Box::pin(async move {
-            loop {
-                self.notify.notified().await;
-                if let Some(entry) = self.messages.lock().await.pop_front() {
-                    return Ok(entry);
-                }
-            }
+            let Some(entry) = self.receiver.recv().await else {
+                bail!("Sender for topic {} has unexpectedly closed", self.topic);
+            };
+            Ok(entry)
         })
     }
 }
@@ -95,18 +80,19 @@ where
             // Send to all subscriptions if topic matches
             // Copy relevant subscriptions before calling them to avoid deadlock if a subscription
             // does another publish (as handle() does)
-            let mut relevant_subscriptions: Vec<MockSubscription<M>> = Vec::new();
+            let mut relevant_subscriptions: Vec<mpsc::UnboundedSender<(String, Arc<M>)>> =
+                Vec::new();
             {
                 let subscriptions = subscriptions.lock().await;
                 for sub in subscriptions.iter() {
                     if match_topic(&sub.topic, &topic) {
-                        relevant_subscriptions.push(sub.subscription.clone())
+                        relevant_subscriptions.push(sub.sender.clone())
                     }
                 }
             }
 
             for sub in relevant_subscriptions.iter() {
-                sub.push(&topic, message.clone()).await;
+                sub.send((topic.clone(), message.clone()))?;
             }
 
             Ok(())
@@ -118,10 +104,11 @@ where
         Box::pin(async move {
             debug!("Mock subscribe on {topic}");
             let mut subscriptions = self.subscriptions.lock().await;
-            let subscription = MockSubscription::new();
+            let (sender, receiver) = mpsc::unbounded_channel();
+            let subscription = MockSubscription::new(topic.clone(), receiver);
             subscriptions.push(SubscriptionRecord {
                 topic: topic.to_string(),
-                subscription: subscription.clone(),
+                sender,
             });
             Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
         })
