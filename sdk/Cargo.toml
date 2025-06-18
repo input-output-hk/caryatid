@@ -2,7 +2,7 @@
 
 [package]
 name = "caryatid_sdk"
-version = "0.9.1"
+version = "0.10.0"
 edition = "2021"
 authors = ["Paul Clark <paul.clark@iohk.io>"]
 description = "The Caryatid framework module SDK"
@@ -14,7 +14,7 @@ anyhow = "1.0"
 futures = "0.3"
 serde_json = "1.0"
 config = "0.15.11"
-caryatid_macros = { version="0.4", path = "macros" }
+caryatid_macros = { version="0.5", path = "macros" }
 tracing = "0.1.40"
 serde = { version = "1.0.214", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
