@@ -130,7 +130,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned> MessageB
         let channel = self.channel.lock().await;
 
         // Serialise the message
-        let payload = serde_cbor::ser::to_vec(&message)?;
+        let payload = serde_cbor::ser::to_vec(&*message)?;
 
         // Publish the message to the queue
         channel
