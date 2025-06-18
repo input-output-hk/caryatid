@@ -67,7 +67,7 @@ impl<M: MessageBounds> Context<M> {
         let topic = topic.to_string();
         let message_bus = self.message_bus.clone();
         self.run(async move {
-            let request_topic = format!("{topic}.#.request");
+            let request_topic = format!("{topic}.*.request");
             let Ok(mut subscription) = message_bus.subscribe(&request_topic).await else {
                 return;
             };
