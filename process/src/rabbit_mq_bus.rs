@@ -192,11 +192,6 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned>
         }) as Box<dyn Subscription<M>>)
     }
 
-    /// Unsubscribe from a topic
-    async fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>) {
-        drop(subscription);
-    }
-
     /// Shut down the bus connection
     async fn shutdown(&self) -> Result<()> {
         info!("Shutting down RabbitMQ interface");

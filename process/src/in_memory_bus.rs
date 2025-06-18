@@ -121,11 +121,6 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
         }) as Box<dyn Subscription<M>>)
     }
 
-    /// Unsubscribe from a topic
-    async fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>) {
-        drop(subscription);
-    }
-
     /// Shut down, clearing all subscriptions
     async fn shutdown(&self) -> Result<()> {
         let mut subscriptions = self.subscriptions.lock().await;

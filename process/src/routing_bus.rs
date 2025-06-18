@@ -204,11 +204,6 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
     }
 
-    /// Unsubscribe from a topic
-    async fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>) {
-        drop(subscription);
-    }
-
     /// Shut down, shutting down all the buses
     async fn shutdown(&self) -> Result<()> {
         let buses = self.buses.lock().await;

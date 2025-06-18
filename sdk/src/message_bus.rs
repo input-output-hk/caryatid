@@ -43,9 +43,7 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
         let mut subscription = self.subscribe(&response_topic).await?;
         let subscription_future = subscription.read();
         self.publish(&request_topic, message).await?;
-        let result = timeout(request_timeout, subscription_future).await;
-        self.unsubscribe(subscription).await;
-        match result {
+        match timeout(request_timeout, subscription_future).await {
             Ok(Ok((_, message))) => {
                 Ok(message)
             },
@@ -58,9 +56,6 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
 
     /// Subscribe to a topic on the bus
     async fn subscribe(&self, topic: &str) -> Result<Box<dyn Subscription<M>>>;
-
-    /// Unsubscribe from the bus
-    async fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>);
 
     /// Shut down
     async fn shutdown(&self) -> Result<()>;

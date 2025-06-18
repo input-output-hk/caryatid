@@ -55,10 +55,6 @@ impl<M: MessageBounds> Context<M> {
         self.message_bus.subscribe(topic).await
     }
 
-    pub async fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>) {
-        self.message_bus.unsubscribe(subscription).await
-    }
-
     pub fn handle<F, Fut>(&self, topic: &str, handler: F) -> task::JoinHandle<()>
     where
         F: Fn(Arc<M>) -> Fut + Send + 'static,

@@ -159,10 +159,6 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
     }
 
-    async fn unsubscribe(&self, subscription: Box<dyn Subscription<M>>) {
-        drop(subscription);
-    }
-
     async fn shutdown(&self) -> Result<()> {
         let shutdowns = self.shutdowns.clone();
         let mut shutdowns = shutdowns.lock().await;
@@ -254,7 +250,7 @@ mod tests {
         assert_eq!(sub0.topic, "test");
         drop(mock_subscriptions);
 
-        setup.mock.unsubscribe(subscription).await;
+        drop(subscription);
 
         // Check the mock removed it, after waiting a little because it's async
         sleep(Duration::from_millis(100)).await;
