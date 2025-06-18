@@ -3,7 +3,6 @@
 
 use anyhow::{anyhow, Result};
 use caryatid_sdk::config::{config_from_value, get_sub_config};
-use caryatid_sdk::correlation_bus::CorrelationBus;
 use caryatid_sdk::{Context, MessageBounds, MessageBus, Module, ModuleRegistry};
 use config::Config;
 use std::collections::HashMap;
@@ -89,16 +88,10 @@ impl<M: MessageBounds> Process<M> {
             Arc::new(buses),
         ));
 
-        // Create correlation wrapper
-        let correlation_bus = Arc::new(CorrelationBus::<M>::new(
-            &get_sub_config(&config, "message-correlator"),
-            routing_bus.clone(),
-        ));
-
         // Create the shared context
         let context = Arc::new(Context::new(
             config.clone(),
-            correlation_bus.clone(),
+            routing_bus.clone(),
             Sender::new(false),
         ));
 

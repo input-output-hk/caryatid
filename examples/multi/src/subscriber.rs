@@ -26,10 +26,10 @@ impl Subscriber {
         let topic2 = config.get_string("topic2").unwrap_or("test2".to_string());
 
         info!("Creating subscription on '{}'", topic1);
-        let mut subscription1 = context.message_bus.register(&topic1).await?;
+        let mut subscription1 = context.subscribe(&topic1).await?;
 
         info!("Creating subscription on '{}'", topic2);
-        let mut subscription2 = context.message_bus.register(&topic2).await?;
+        let mut subscription2 = context.subscribe(&topic2).await?;
 
         context.run(async move {
             loop {

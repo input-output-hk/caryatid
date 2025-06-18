@@ -1,5 +1,6 @@
 //! Message super-bus which routes to other MessageBuses
 use anyhow::Result;
+use async_trait::async_trait;
 use caryatid_sdk::config::config_from_value;
 use caryatid_sdk::match_topic::match_topic;
 use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
@@ -9,7 +10,10 @@ use std::collections::BTreeMap;
 use std::mem;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::time::Duration;
 use tracing::{error, info};
+
+const DEFAULT_REQUEST_TIMEOUT: u64 = 5;
 
 // By creating a function that returns the subscription, we can keep the
 // subscription and corresponding future bound to each other whilst only
@@ -65,6 +69,9 @@ pub struct RoutingBus<M: MessageBounds> {
 
     /// Routes
     routes: Arc<Mutex<Vec<Arc<Route<M>>>>>,
+
+    /// Timeout
+    request_timeout: Duration,
 }
 
 impl<M: MessageBounds> RoutingBus<M> {
@@ -119,90 +126,91 @@ impl<M: MessageBounds> RoutingBus<M> {
             }
         }
 
+        let timeout = config
+            .get::<u64>("request-timeout")
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT);
+        let timeout = Duration::from_secs(timeout);
+
         Self {
             buses: Arc::new(Mutex::new(buses)),
             routes: Arc::new(Mutex::new(routes)),
+            request_timeout: timeout,
         }
     }
 }
 
+#[async_trait]
 impl<M> MessageBus<M> for RoutingBus<M>
 where
     M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned,
 {
     /// Publish a message on a given topic
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
-        let routes = self.routes.clone();
+    async fn publish(&self, topic: &str, message: Arc<M>) -> Result<()> {
         let topic = topic.to_string();
 
-        Box::pin(async move {
-            // Get matching routes, limiting lock duration
-            let matching: Vec<_> = {
-                let routes = routes.lock().await;
-                routes
-                    .iter()
-                    .filter(|route| match_topic(&route.pattern, &topic))
-                    .map(Arc::clone)
-                    .collect()
-            };
+        // Get matching routes, limiting lock duration
+        let matching: Vec<_> = {
+            let routes = self.routes.lock().await;
+            routes
+                .iter()
+                .filter(|route| match_topic(&route.pattern, &topic))
+                .map(Arc::clone)
+                .collect()
+        };
 
-            for route in matching {
-                for bus in route.buses.iter() {
-                    let _ = bus.publish(&topic, message.clone()).await;
-                }
-                break; // Stop after match
+        for route in matching {
+            for bus in route.buses.iter() {
+                let _ = bus.publish(&topic, message.clone()).await;
             }
-            Ok(())
-        })
+            break; // Stop after match
+        }
+        Ok(())
     }
 
-    // Subscribe for a message with an subscriber function
-    fn register(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
-        let routes = self.routes.clone();
+    /// Request timeout
+    fn request_timeout(&self) -> Duration {
+        self.request_timeout
+    }
+
+    /// Subscribe to a topic
+    async fn subscribe(&self, topic: &str) -> Result<Box<dyn Subscription<M>>> {
         let topic = topic.to_string();
 
-        Box::pin(async move {
-            // Get matching routes, limiting lock duration
-            let matching: Vec<_> = {
-                let routes = routes.lock().await;
-                routes
-                    .iter()
-                    .filter(|route| match_topic(&route.pattern, &topic))
-                    .map(Arc::clone)
-                    .collect()
-            };
+        // Get matching routes, limiting lock duration
+        let matching: Vec<_> = {
+            let routes = self.routes.lock().await;
+            routes
+                .iter()
+                .filter(|route| match_topic(&route.pattern, &topic))
+                .map(Arc::clone)
+                .collect()
+        };
 
-            let mut subscription = RoutingSubscription::new();
-            for route in matching {
-                for bus in route.buses.iter() {
-                    match bus.register(&topic).await {
-                        Ok(sub) => {
-                            subscription.reads.push(read(sub));
-                        }
-                        Err(e) => {
-                            error!("Could not register subscription on topic {topic}: {e}");
-                        }
+        let mut subscription = RoutingSubscription::new();
+        for route in matching {
+            for bus in route.buses.iter() {
+                match bus.subscribe(&topic).await {
+                    Ok(sub) => {
+                        subscription.reads.push(read(sub));
+                    }
+                    Err(e) => {
+                        error!("Could not register subscription on topic {topic}: {e}");
                     }
                 }
-                break; // Stop after match
             }
+            break; // Stop after match
+        }
 
-            Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
-        })
+        Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
     }
 
     /// Shut down, shutting down all the buses
-    fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
-        let buses = self.buses.clone();
-
-        Box::pin(async move {
-            let buses = buses.lock().await;
-            for (_, bus) in buses.iter() {
-                let _ = bus.shutdown().await;
-            }
-
-            Ok(())
-        })
+    async fn shutdown(&self) -> Result<()> {
+        let buses = self.buses.lock().await;
+        for (_, bus) in buses.iter() {
+            let _ = bus.shutdown().await;
+        }
+        Ok(())
     }
 }
 
@@ -230,9 +238,15 @@ mod tests {
                 .with_test_writer()
                 .try_init();
 
+            // Parse config
+            let config = Config::builder()
+                .add_source(config::File::from_str(config_str, FileFormat::Toml))
+                .build()
+                .unwrap();
+
             // Create mock buses
-            let mock_foo = Arc::new(MockBus::<M>::new());
-            let mock_bar = Arc::new(MockBus::<M>::new());
+            let mock_foo = Arc::new(MockBus::<M>::new(&config));
+            let mock_bar = Arc::new(MockBus::<M>::new(&config));
 
             // BusInfo to pass to routing
             let mut buses: Vec<Arc<BusInfo<M>>> = Vec::new();
@@ -245,12 +259,6 @@ mod tests {
                 id: "bar".to_string(),
                 bus: mock_bar.clone(),
             }));
-
-            // Parse config
-            let config = Config::builder()
-                .add_source(config::File::from_str(config_str, FileFormat::Toml))
-                .build()
-                .unwrap();
 
             // Create the bus
             let bus = RoutingBus::<M>::new(&config, Arc::new(buses));
@@ -274,7 +282,7 @@ bus = ["foo", "bar"]
         let setup = TestSetup::<String>::new(config);
 
         // Subscribe
-        assert!(setup.bus.register("test").await.is_ok());
+        assert!(setup.bus.subscribe("test").await.is_ok());
 
         // Check foo got it
         let foo_subscriptions = setup.mock_foo.subscriptions.lock().await;
@@ -300,7 +308,7 @@ bus = "foo"
         let setup = TestSetup::<String>::new(config);
 
         // Subscribe
-        assert!(setup.bus.register("test").await.is_ok());
+        assert!(setup.bus.subscribe("test").await.is_ok());
 
         // Check foo got it
         let foo_subscriptions = setup.mock_foo.subscriptions.lock().await;

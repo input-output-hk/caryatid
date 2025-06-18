@@ -18,7 +18,7 @@ caryatid_macros = { version="0.4", path = "macros" }
 tracing = "0.1.40"
 serde = { version = "1.0.214", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
-rand = "0.8.5"
+rand = "0.9"
 hex = "0.4.3"
 async-trait = "0.1.88"
 

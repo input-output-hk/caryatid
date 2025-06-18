@@ -1,7 +1,7 @@
 //! Caryatid Record module
 
 use anyhow::{Error, Result};
-use caryatid_sdk::{module, Context, MessageBounds, MessageBusExt, Module};
+use caryatid_sdk::{module, Context, MessageBounds, Module};
 use config::Config;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -30,37 +30,35 @@ impl<M: MessageBounds + serde::Serialize> Record<M> {
                         }
                         info!("Creating message recorder on '{}'", topic);
                         let num = Arc::new(AtomicU64::new(0));
-                        context
-                            .message_bus
-                            .subscribe(&topic, move |message: Arc<M>| {
-                                let num = num.clone();
-                                let path = path.clone();
-                                async move {
-                                    let filename = path.join(format!(
-                                        "{}.json",
-                                        num.fetch_add(1, Ordering::SeqCst)
-                                    ));
-                                    match File::create(&filename) {
-                                        Ok(file) => {
-                                            match serde_json::to_writer(file, &*message) {
-                                                Err(error) => {
-                                                    error!(
-                                                        "Failed to record message to file {:?}: {}",
-                                                        &filename, error
-                                                    );
-                                                }
-                                                _ => (),
-                                            };
-                                        }
-                                        Err(error) => {
-                                            error!(
-                                                "Failed to record message to file {:?}: {}",
-                                                &filename, error
-                                            );
-                                        }
-                                    };
+                        let mut subscription = context.subscribe(&topic).await?;
+                        context.run(async move {
+                            loop {
+                                let Ok((_, message)) = subscription.read().await else {
+                                    return;
+                                };
+                                let filename = path
+                                    .join(format!("{}.json", num.fetch_add(1, Ordering::SeqCst)));
+                                match File::create(&filename) {
+                                    Ok(file) => {
+                                        match serde_json::to_writer(file, &*message) {
+                                            Err(error) => {
+                                                error!(
+                                                    "Failed to record message to file {:?}: {}",
+                                                    &filename, error
+                                                );
+                                            }
+                                            _ => (),
+                                        };
+                                    }
+                                    Err(error) => {
+                                        error!(
+                                            "Failed to record message to file {:?}: {}",
+                                            &filename, error
+                                        );
+                                    }
                                 }
-                            })?;
+                            }
+                        });
                     }
                     _ => error!("No path given for Record module"),
                 };

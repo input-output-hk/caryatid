@@ -2,7 +2,7 @@
 use crate::message::Message;
 use anyhow::Result;
 use caryatid_module_rest_server::messages::RESTResponse;
-use caryatid_sdk::{module, Context, MessageBusExt, Module};
+use caryatid_sdk::{module, Context, Module};
 use config::Config;
 use futures::future;
 use std::sync::Arc;
@@ -21,25 +21,23 @@ impl RESTHelloWorld {
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating REST Hello, world! responder on '{}'", topic);
 
-        context
-            .message_bus
-            .handle(&topic, |message: Arc<Message>| {
-                let response = match message.as_ref() {
-                    Message::RESTRequest(request) => {
-                        info!(
-                            "REST hello world received {} {}",
-                            request.method, request.path
-                        );
-                        RESTResponse::with_text(200, "Hello, world!")
-                    }
-                    _ => {
-                        error!("Unexpected message type {:?}", message);
-                        RESTResponse::with_text(500, "Unexpected message in REST request")
-                    }
-                };
+        context.handle(&topic, |message: Arc<Message>| {
+            let response = match message.as_ref() {
+                Message::RESTRequest(request) => {
+                    info!(
+                        "REST hello world received {} {}",
+                        request.method, request.path
+                    );
+                    RESTResponse::with_text(200, "Hello, world!")
+                }
+                _ => {
+                    error!("Unexpected message type {:?}", message);
+                    RESTResponse::with_text(500, "Unexpected message in REST request")
+                }
+            };
 
-                future::ready(Arc::new(Message::RESTResponse(response)))
-            })?;
+            future::ready(Arc::new(Message::RESTResponse(response)))
+        });
 
         Ok(())
     }

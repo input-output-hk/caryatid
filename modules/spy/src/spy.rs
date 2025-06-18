@@ -1,7 +1,7 @@
 //! Caryatid Spy module
 
 use anyhow::Result;
-use caryatid_sdk::{module, Context, MessageBounds, MessageBusExt, Module};
+use caryatid_sdk::{module, Context, MessageBounds, Module};
 use config::Config;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -16,11 +16,15 @@ impl<M: MessageBounds + std::fmt::Debug> Spy<M> {
         match config.get_string("topic") {
             Ok(topic) => {
                 info!("Creating message spy on '{}'", topic);
-                context
-                    .message_bus
-                    .subscribe(&topic, |message: Arc<M>| async move {
+                let mut subscription = context.subscribe(&topic).await?;
+                context.run(async move {
+                    loop {
+                        let Ok((_, message)) = subscription.read().await else {
+                            return;
+                        };
                         info!("{:?}", message);
-                    })?;
+                    }
+                });
             }
 
             _ => error!("No topic given for Spy module - no effect"),

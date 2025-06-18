@@ -1,7 +1,6 @@
 // Caryatid framework module SDK - main library exports
 pub mod config;
 pub mod context;
-pub mod correlation_bus;
 pub mod match_topic;
 pub mod message_bus;
 pub mod mock_bus;
@@ -12,8 +11,6 @@ pub mod module_registry;
 pub use self::context::Context;
 pub use self::message_bus::MessageBounds;
 pub use self::message_bus::MessageBus;
-pub use self::message_bus::MessageBusExt;
-pub use self::message_bus::QoS;
 pub use self::message_bus::Subscription;
 pub use self::message_bus::SubscriptionBounds;
 pub use self::module::Module;

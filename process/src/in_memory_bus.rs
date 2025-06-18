@@ -1,14 +1,17 @@
 // In-memory pub-sub bus with multi-threaded async workers
 use anyhow::Result;
+use async_trait::async_trait;
 use caryatid_sdk::match_topic::match_topic;
 use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
 use config::Config;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
+use tokio::time::Duration;
 use tracing::info;
 
 const DEFAULT_SUBSCRIBER_QUEUE_SIZE: i64 = 10;
+const DEFAULT_REQUEST_TIMEOUT: u64 = 5;
 
 struct InMemorySubscription<M> {
     receiver: mpsc::Receiver<(String, Arc<M>)>,
@@ -41,6 +44,9 @@ pub struct InMemoryBus<M: MessageBounds> {
 
     /// Queue size for subscriber
     subscriber_queue_size: usize,
+
+    /// Request timeout
+    request_timeout: Duration,
 }
 
 impl<M: MessageBounds> InMemoryBus<M> {
@@ -54,69 +60,73 @@ impl<M: MessageBounds> InMemoryBus<M> {
         let subscriptions: Arc<Mutex<Vec<Arc<PatternSubscription<M>>>>> =
             Arc::new(Mutex::new(Vec::new()));
 
+        let timeout = config
+            .get::<u64>("request-timeout")
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT);
+        let timeout = Duration::from_secs(timeout);
+
         InMemoryBus {
             subscriptions,
             subscriber_queue_size,
+            request_timeout: timeout,
         }
     }
 }
 
+#[async_trait]
 impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
     /// Publish a message on a given topic
-    fn publish(&self, topic: &str, message: Arc<M>) -> BoxFuture<'static, Result<()>> {
+    async fn publish(&self, topic: &str, message: Arc<M>) -> Result<()> {
         let subscriptions = self.subscriptions.clone();
         let topic = topic.to_string();
         let message = message.clone();
 
-        Box::pin(async move {
-            // Get matching subscriptions, limiting lock duration
-            let matching: Vec<_> = {
-                subscriptions
-                    .lock()
-                    .await
-                    .iter()
-                    .filter(|patsub| match_topic(&patsub.pattern, &topic))
-                    .map(Arc::clone)
-                    .collect()
-            };
+        // Get matching subscriptions, limiting lock duration
+        let matching: Vec<_> = {
+            subscriptions
+                .lock()
+                .await
+                .iter()
+                .filter(|patsub| match_topic(&patsub.pattern, &topic))
+                .map(Arc::clone)
+                .collect()
+        };
 
-            for patsub in matching {
-                let topic = topic.clone();
-                let message = message.clone();
-                patsub.queue.send((topic, message)).await?;
-            }
+        for patsub in matching {
+            let topic = topic.clone();
+            let message = message.clone();
+            patsub.queue.send((topic, message)).await?;
+        }
 
-            Ok(())
-        })
+        Ok(())
+    }
+
+    /// Request timeout
+    fn request_timeout(&self) -> Duration {
+        self.request_timeout
     }
 
     /// Subscribe for a message with an subscriber function
-    fn register(&self, topic: &str) -> BoxFuture<Result<Box<dyn Subscription<M>>>> {
+    async fn subscribe(&self, topic: &str) -> Result<Box<dyn Subscription<M>>> {
         let subscriptions = self.subscriptions.clone();
         let topic = topic.to_string();
         let subscriber_queue_size = self.subscriber_queue_size;
 
-        Box::pin(async move {
-            let (sender, receiver) = mpsc::channel::<(String, Arc<M>)>(subscriber_queue_size);
+        let (sender, receiver) = mpsc::channel::<(String, Arc<M>)>(subscriber_queue_size);
 
-            let mut subscriptions = subscriptions.lock().await;
-            subscriptions.push(Arc::new(PatternSubscription {
-                pattern: topic,
-                queue: sender,
-            }));
-            Ok(Box::new(InMemorySubscription { receiver }) as Box<dyn Subscription<M>>)
-        })
+        let mut subscriptions = subscriptions.lock().await;
+        subscriptions.push(Arc::new(PatternSubscription {
+            pattern: topic,
+            queue: sender,
+        }));
+        Ok(Box::new(InMemorySubscription { receiver }) as Box<dyn Subscription<M>>)
     }
 
     /// Shut down, clearing all subscriptions
-    fn shutdown(&self) -> BoxFuture<'static, Result<()>> {
-        let subscriptions = self.subscriptions.clone();
-
-        Box::pin(async move {
-            let mut subscriptions = subscriptions.lock().await;
-            subscriptions.clear();
-            Ok(())
-        })
+    async fn shutdown(&self) -> Result<()> {
+        let mut subscriptions = self.subscriptions.lock().await;
+        subscriptions.clear();
+        Ok(())
     }
 }
 
@@ -160,7 +170,7 @@ mod tests {
         let setup = TestSetup::<String>::new("");
 
         // Subscribe
-        let subscription = setup.bus.register("test").await;
+        let subscription = setup.bus.subscribe("test").await;
         assert!(subscription.is_ok());
         if let Ok(mut subscription) = subscription {
             // Publish
@@ -181,7 +191,7 @@ mod tests {
         let setup = TestSetup::<String>::new("");
 
         // Subscribe
-        let subscription = setup.bus.register("test").await;
+        let subscription = setup.bus.subscribe("test").await;
         assert!(subscription.is_ok());
         if let Ok(mut subscription) = subscription {
             // Publish
