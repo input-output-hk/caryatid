@@ -1,13 +1,13 @@
 //! Mock message bus for tests
 use crate::match_topic::match_topic;
 use crate::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use config::Config;
 use futures::future::BoxFuture;
-use std::collections::VecDeque;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{mpsc, Mutex};
 use tokio::time::Duration;
 use tracing::debug;
 
@@ -18,28 +18,26 @@ pub struct PublishRecord<M: MessageBounds> {
     pub message: Arc<M>,
 }
 
-#[derive(Clone)]
 pub struct MockSubscription<M> {
-    messages: Arc<Mutex<VecDeque<(String, Arc<M>)>>>,
-    notify: Arc<Notify>,
-    deregister: Arc<dyn Fn() + Send + Sync>,
+    id: usize,
+    receiver: mpsc::UnboundedReceiver<(String, Arc<M>)>,
+    deregister: Box<dyn Fn() + Send + Sync>,
 }
 
 fn make_deregister<M: Send + Sync + 'static>(
     subscriptions: Arc<Mutex<Vec<SubscriptionRecord<M>>>>,
-    target_messages: Arc<Mutex<VecDeque<(String, Arc<M>)>>>,
-) -> Arc<dyn Fn() + Send + Sync> {
+    id: usize,
+) -> Box<dyn Fn() + Send + Sync> {
     let deregister = move || {
         let subscriptions = Arc::clone(&subscriptions);
-        let target_messages = Arc::clone(&target_messages);
 
         // Spawn async task to avoid `.await` in sync closure
         tokio::spawn(async move {
             let mut subs = subscriptions.lock().await;
-            subs.retain(|rec| !Arc::ptr_eq(&rec.messages, &target_messages));
+            subs.retain(|rec| rec.id != id);
         });
     };
-    Arc::new(deregister)
+    Box::new(deregister)
 }
 
 impl<M> Drop for MockSubscription<M> {
@@ -50,20 +48,23 @@ impl<M> Drop for MockSubscription<M> {
 
 #[derive(Clone)]
 pub struct SubscriptionRecord<M> {
+    pub id: usize,
     pub topic: String,
-    messages: Arc<Mutex<VecDeque<(String, Arc<M>)>>>,
-    notify: Arc<Notify>,
+    sender: Arc<mpsc::UnboundedSender<(String, Arc<M>)>>,
 }
 
 impl<M: MessageBounds> SubscriptionBounds for MockSubscription<M> {}
 
 impl<M: MessageBounds> MockSubscription<M> {
-    pub fn new(subscriptions: Arc<Mutex<Vec<SubscriptionRecord<M>>>>) -> Self {
-        let messages = Arc::new(Mutex::new(VecDeque::new()));
-        let deregister = make_deregister(subscriptions, messages.clone());
+    pub fn new(
+        id: usize,
+        receiver: mpsc::UnboundedReceiver<(String, Arc<M>)>,
+        subscriptions: Arc<Mutex<Vec<SubscriptionRecord<M>>>>,
+    ) -> Self {
+        let deregister = make_deregister(subscriptions, id);
         Self {
-            messages,
-            notify: Arc::new(Notify::new()),
+            id,
+            receiver,
             deregister,
         }
     }
@@ -72,12 +73,10 @@ impl<M: MessageBounds> MockSubscription<M> {
 impl<M: MessageBounds> Subscription<M> for MockSubscription<M> {
     fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
         Box::pin(async move {
-            loop {
-                self.notify.notified().await;
-                if let Some(entry) = self.messages.lock().await.pop_front() {
-                    return Ok(entry);
-                }
-            }
+            let Some(entry) = self.receiver.recv().await else {
+                bail!("Sender {} has unexpectedly closed", self.id);
+            };
+            Ok(entry)
         })
     }
 }
@@ -87,6 +86,7 @@ pub struct MockBus<M: MessageBounds> {
     pub subscriptions: Arc<Mutex<Vec<SubscriptionRecord<M>>>>,
     pub shutdowns: Arc<Mutex<u16>>, // just count them
     request_timeout: Duration,
+    next_subscription_id: Arc<AtomicUsize>,
 }
 
 impl<M: MessageBounds> MockBus<M> {
@@ -101,6 +101,7 @@ impl<M: MessageBounds> MockBus<M> {
             subscriptions: Arc::new(Mutex::new(Vec::new())),
             shutdowns: Arc::new(Mutex::new(0)),
             request_timeout: timeout,
+            next_subscription_id: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
@@ -137,11 +138,7 @@ where
         }
 
         for sub in relevant_subscriptions.iter() {
-            sub.messages
-                .lock()
-                .await
-                .push_back((topic.to_string(), message.clone()));
-            sub.notify.notify_one();
+            sub.sender.send((topic.to_string(), message.clone()))?;
         }
 
         Ok(())
@@ -155,11 +152,15 @@ where
         let topic = topic.to_string();
         debug!("Mock subscribe on {topic}");
         let mut subscriptions = self.subscriptions.lock().await;
-        let subscription = MockSubscription::new(self.subscriptions.clone());
+        let id = self
+            .next_subscription_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let subscription = MockSubscription::new(id, receiver, self.subscriptions.clone());
         subscriptions.push(SubscriptionRecord {
+            id,
             topic: topic.to_string(),
-            messages: subscription.messages.clone(),
-            notify: subscription.notify.clone(),
+            sender: Arc::new(sender),
         });
         Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
     }
@@ -288,5 +289,33 @@ mod tests {
 
         // Check the mock got it
         assert_eq!(*setup.mock.shutdowns.lock().await, 1);
+    }
+
+    #[tokio::test]
+    async fn publish_lets_you_send_multiple_messages() -> Result<()> {
+        let setup = TestSetup::<String>::new("");
+        const TOPIC: &str = "topic";
+
+        let mut subscriber = setup.mock.subscribe(TOPIC).await?;
+
+        setup
+            .mock
+            .publish(TOPIC, Arc::new("Hello".to_string()))
+            .await?;
+        setup
+            .mock
+            .publish(TOPIC, Arc::new("World!".to_string()))
+            .await?;
+
+        assert_eq!(
+            subscriber.read().await?,
+            (TOPIC.to_string(), Arc::new("Hello".to_string()))
+        );
+        assert_eq!(
+            subscriber.read().await?,
+            (TOPIC.to_string(), Arc::new("World!".to_string()))
+        );
+
+        Ok(())
     }
 }
