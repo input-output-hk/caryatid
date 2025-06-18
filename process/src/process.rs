@@ -1,15 +1,15 @@
 //! Main process for a Caryatid framework installation
 //! Loads and runs modules built with caryatid-sdk
 
-use caryatid_sdk::{Context, MessageBus, Module, MessageBounds, ModuleRegistry};
-use caryatid_sdk::config::{get_sub_config, config_from_value};
-use anyhow::{Result, anyhow};
-use std::sync::Arc;
-use std::collections::HashMap;
+use anyhow::{anyhow, Result};
+use caryatid_sdk::config::{config_from_value, get_sub_config};
+use caryatid_sdk::{Context, MessageBounds, MessageBus, Module, ModuleRegistry};
 use config::Config;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch::Sender;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 mod in_memory_bus;
 use in_memory_bus::InMemoryBus;
@@ -18,7 +18,7 @@ mod rabbit_mq_bus;
 use rabbit_mq_bus::RabbitMQBus;
 
 mod routing_bus;
-use routing_bus::{RoutingBus, BusInfo};
+use routing_bus::{BusInfo, RoutingBus};
 
 /// Main Process structure
 pub struct Process<M: MessageBounds> {
@@ -33,12 +33,9 @@ pub struct Process<M: MessageBounds> {
 }
 
 impl<M: MessageBounds> Process<M> {
-
     /// Create a bus of the given type
     async fn create_bus(id: String, class: String, config: &Config) -> Result<BusInfo<M>> {
-
         let bus: Arc<dyn MessageBus<M>> = match class.as_str() {
-
             // In-memory
             "in-memory" => Arc::new(InMemoryBus::<M>::new(&config)),
 
@@ -62,7 +59,6 @@ impl<M: MessageBounds> Process<M> {
 
     /// Create a process with the given config
     pub async fn create(config: Arc<Config>) -> Self {
-
         // Create bus registrations
         let mut buses: Vec<Arc<BusInfo<M>>> = Vec::new();
 
@@ -77,7 +73,7 @@ impl<M: MessageBounds> Process<M> {
                         match Self::create_bus(id, class, &mbc).await {
                             Ok(bus) => {
                                 buses.push(Arc::new(bus));
-                            },
+                            }
 
                             _ => {}
                         }
@@ -89,17 +85,25 @@ impl<M: MessageBounds> Process<M> {
         // Create routing message bus
         let routing_bus = Arc::new(RoutingBus::<M>::new(
             &get_sub_config(&config, "message-router"),
-            Arc::new(buses)));
+            Arc::new(buses),
+        ));
 
         // Create the shared context
-        let context = Arc::new(Context::new(config.clone(), routing_bus.clone(), Sender::new(false)));
+        let context = Arc::new(Context::new(
+            config.clone(),
+            routing_bus.clone(),
+            Sender::new(false),
+        ));
 
-        Self { config, context, modules: HashMap::new() }
+        Self {
+            config,
+            context,
+            modules: HashMap::new(),
+        }
     }
 
     /// Run the process
     pub async fn run(&self) -> Result<()> {
-
         info!("Initialising...");
 
         // Initialise all the modules from [module.<id>] configuration
@@ -107,7 +111,7 @@ impl<M: MessageBounds> Process<M> {
             for (id, mod_conf) in mod_confs {
                 if let Ok(modt) = mod_conf.into_table() {
                     let modc = config_from_value(modt);
-                    let mut module_name = id.clone();  // Default
+                    let mut module_name = id.clone(); // Default
                     if let Ok(class) = modc.get_string("class") {
                         module_name = class;
                     }
@@ -115,9 +119,11 @@ impl<M: MessageBounds> Process<M> {
                     // Look up the module
                     if let Some(module) = self.modules.get(&module_name) {
                         info!("Initialising module {id}");
-                        module.init(self.context.clone(), Arc::new(modc)).await.unwrap();
-                    }
-                    else {
+                        module
+                            .init(self.context.clone(), Arc::new(modc))
+                            .await
+                            .unwrap();
+                    } else {
                         error!("Unrecognised module class: {module_name} in [module.{id}]");
                     }
                 } else {
@@ -131,14 +137,15 @@ impl<M: MessageBounds> Process<M> {
         // Send startup message if required
         let _ = self.context.startup_watch.send(true);
         if let Ok(topic) = self.config.get_string("startup.topic") {
-            self.context.message_bus.publish(&topic, Arc::new(M::default()))
+            self.context
+                .message_bus
+                .publish(&topic, Arc::new(M::default()))
                 .await
                 .unwrap_or_else(|e| error!("Failed to publish: {e}"));
         }
 
         // Wait for SIGTERM
-        let mut sigterm = signal(SignalKind::terminate())
-            .expect("Can't set signal");
+        let mut sigterm = signal(SignalKind::terminate()).expect("Can't set signal");
         sigterm.recv().await;
 
         info!("SIGTERM received. Shutting down...");
@@ -152,7 +159,6 @@ impl<M: MessageBounds> Process<M> {
 
 /// Module registry implementation
 impl<M: MessageBounds> ModuleRegistry<M> for Process<M> {
-
     /// Register a module
     fn register(&mut self, module: Arc<dyn Module<M>>) {
         let name = module.get_name();

@@ -1,21 +1,21 @@
 //! Mock message bus for tests
+use crate::match_topic::match_topic;
+use crate::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
+use anyhow::Result;
+use async_trait::async_trait;
+use config::Config;
+use futures::future::BoxFuture;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use futures::future::BoxFuture;
-use anyhow::Result;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::Duration;
 use tracing::debug;
-use crate::message_bus::{MessageBus, MessageBounds, Subscription, SubscriptionBounds};
-use crate::match_topic::match_topic;
-use config::Config;
-use async_trait::async_trait;
 
 const DEFAULT_REQUEST_TIMEOUT: u64 = 5;
 
 pub struct PublishRecord<M: MessageBounds> {
     pub topic: String,
-    pub message: Arc<M>
+    pub message: Arc<M>,
 }
 
 #[derive(Clone)]
@@ -85,13 +85,15 @@ impl<M: MessageBounds> Subscription<M> for MockSubscription<M> {
 pub struct MockBus<M: MessageBounds> {
     pub publishes: Arc<Mutex<Vec<PublishRecord<M>>>>,
     pub subscriptions: Arc<Mutex<Vec<SubscriptionRecord<M>>>>,
-    pub shutdowns: Arc<Mutex<u16>>,           // just count them
+    pub shutdowns: Arc<Mutex<u16>>, // just count them
     request_timeout: Duration,
 }
 
 impl<M: MessageBounds> MockBus<M> {
     pub fn new(config: &Config) -> Self {
-        let timeout = config.get::<u64>("request-timeout").unwrap_or(DEFAULT_REQUEST_TIMEOUT);
+        let timeout = config
+            .get::<u64>("request-timeout")
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT);
         let timeout = Duration::from_secs(timeout);
 
         Self {
@@ -105,10 +107,10 @@ impl<M: MessageBounds> MockBus<M> {
 
 #[async_trait]
 impl<M> MessageBus<M> for MockBus<M>
-where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
-
+where
+    M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned,
+{
     async fn publish(&self, topic: &str, message: Arc<M>) -> Result<()> {
-
         debug!("Mock publish on {topic}");
         let topic = topic.to_string();
 
@@ -135,7 +137,10 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         }
 
         for sub in relevant_subscriptions.iter() {
-            sub.messages.lock().await.push_back((topic.to_string(), message.clone()));
+            sub.messages
+                .lock()
+                .await
+                .push_back((topic.to_string(), message.clone()));
             sub.notify.notify_one();
         }
 
@@ -171,10 +176,10 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tracing::Level;
-    use tracing_subscriber;
     use config::FileFormat;
     use tokio::time::sleep;
+    use tracing::Level;
+    use tracing_subscriber;
 
     // Helper to set up a correlation bus with a mock sub-bus, from given config string
     struct TestSetup<M: MessageBounds> {
@@ -182,9 +187,7 @@ mod tests {
     }
 
     impl<M: MessageBounds> TestSetup<M> {
-
         fn new(config_str: &str) -> Self {
-
             // Set up tracing
             let _ = tracing_subscriber::fmt()
                 .with_max_level(Level::DEBUG)
@@ -209,7 +212,11 @@ mod tests {
         let setup = TestSetup::<String>::new("");
 
         // Send a message
-        assert!(setup.mock.publish("test", Arc::new("Hello, world!".to_string())).await.is_ok());
+        assert!(setup
+            .mock
+            .publish("test", Arc::new("Hello, world!".to_string()))
+            .await
+            .is_ok());
 
         // Check the mock got it
         let mock_publishes = setup.mock.publishes.lock().await;
@@ -241,7 +248,9 @@ mod tests {
         // Subscribe
         let subscription = setup.mock.subscribe("test").await;
         assert!(subscription.is_ok());
-        let Ok(subscription) = subscription else { return; };
+        let Ok(subscription) = subscription else {
+            return;
+        };
 
         // Check the mock got it
         let mock_subscriptions = setup.mock.subscriptions.lock().await;
@@ -263,9 +272,11 @@ mod tests {
         let setup = TestSetup::<String>::new("request-timeout = 1");
 
         // Request with no response should timeout
-        assert!(setup.mock.request("test", Arc::new("Hello, world!".to_string()))
-                .await
-                .is_err());
+        assert!(setup
+            .mock
+            .request("test", Arc::new("Hello, world!".to_string()))
+            .await
+            .is_err());
     }
 
     #[tokio::test]

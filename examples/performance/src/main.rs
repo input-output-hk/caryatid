@@ -1,11 +1,11 @@
 //! 'main' for Caryatid performance test
 
-use caryatid_process::Process;
 use anyhow::Result;
-use config::{Config, File, Environment};
+use caryatid_process::Process;
+use config::{Config, Environment, File};
+use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber;
-use std::sync::Arc;
 
 // Modules in the same crate
 mod subscriber;
@@ -20,18 +20,19 @@ use message::Message;
 /// Standard main
 #[tokio::main]
 pub async fn main() -> Result<()> {
-
     // Initialise tracing
     tracing_subscriber::fmt::init();
 
     info!("Caryatid modular framework - performance test");
 
     // Read the config
-    let config = Arc::new(Config::builder()
-        .add_source(File::with_name("performance"))
-        .add_source(Environment::with_prefix("CARYATID"))
-        .build()
-        .unwrap());
+    let config = Arc::new(
+        Config::builder()
+            .add_source(File::with_name("performance"))
+            .add_source(Environment::with_prefix("CARYATID"))
+            .build()
+            .unwrap(),
+    );
 
     // Create the process
     let mut process = Process::<Message>::create(config).await;
@@ -47,4 +48,3 @@ pub async fn main() -> Result<()> {
     info!("Exiting");
     Ok(())
 }
-

@@ -1,9 +1,9 @@
 //! Simple Caraytid module - subscriber side
-use caryatid_sdk::{Context, Module, module};
-use std::sync::Arc;
 use anyhow::Result;
+use caryatid_sdk::{module, Context, Module};
 use config::Config;
-use tracing::{info};
+use std::sync::Arc;
+use tracing::info;
 
 /// Standard message type
 type MType = serde_json::Value;
@@ -18,11 +18,9 @@ type MType = serde_json::Value;
 pub struct Subscriber;
 
 impl Subscriber {
-
     // Implement the single initialisation function, with application
     // Context and this module's Config
     async fn init(&self, context: Arc<Context<MType>>, config: Arc<Config>) -> Result<()> {
-
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         info!("Creating subscriber on '{}'", topic);
@@ -32,7 +30,9 @@ impl Subscriber {
         let mut subscription = context.subscribe(&topic).await?;
         context.run(async move {
             loop {
-                let Ok((_, message)) = subscription.read().await else { return; };
+                let Ok((_, message)) = subscription.read().await else {
+                    return;
+                };
                 info!("Received: {:?}", message);
             }
         });
@@ -40,4 +40,3 @@ impl Subscriber {
         Ok(())
     }
 }
-

@@ -1,13 +1,12 @@
 //! Generic MessageBus trait for any pub-sub bus
-use futures::future::BoxFuture;
 use anyhow::{anyhow, Result};
-use std::sync::Arc;
-use tokio::time::{Duration, timeout};
 use async_trait::async_trait;
+use futures::future::BoxFuture;
+use std::sync::Arc;
+use tokio::time::{timeout, Duration};
 
 /// Subscriber pattern function types - takes topic and message
-pub type Subscriber<M> = dyn Fn(&str, Arc<M>) ->
-    BoxFuture<'static, ()> + Send + Sync + 'static;
+pub type Subscriber<M> = dyn Fn(&str, Arc<M>) -> BoxFuture<'static, ()> + Send + Sync + 'static;
 
 pub trait SubscriptionBounds: Send {}
 pub trait Subscription<M>: SubscriptionBounds {
@@ -15,15 +14,19 @@ pub trait Subscription<M>: SubscriptionBounds {
 }
 
 /// Message bounds trait (awaiting trait aliases)
-pub trait MessageBounds: Send + Sync + Clone + Default +
-    serde::Serialize + serde::de::DeserializeOwned + 'static {}
-impl<T: Send + Sync + Clone + Default + serde::Serialize +
-     serde::de::DeserializeOwned + 'static> MessageBounds for T {}
+pub trait MessageBounds:
+    Send + Sync + Clone + Default + serde::Serialize + serde::de::DeserializeOwned + 'static
+{
+}
+impl<
+        T: Send + Sync + Clone + Default + serde::Serialize + serde::de::DeserializeOwned + 'static,
+    > MessageBounds for T
+{
+}
 
 /// Generic MessageBus trait
- #[async_trait]
+#[async_trait]
 pub trait MessageBus<M: MessageBounds>: Send + Sync {
-
     /// Publish a message
     /// Note async but not defined as such because this is used dynamically
     async fn publish(&self, topic: &str, message: Arc<M>) -> Result<()>;
@@ -44,13 +47,9 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
         let subscription_future = subscription.read();
         self.publish(&request_topic, message).await?;
         match timeout(request_timeout, subscription_future).await {
-            Ok(Ok((_, message))) => {
-                Ok(message)
-            },
-            Ok(Err(e)) => {
-                Err(e)
-            },
-            _ => Err(anyhow!("Request timed out"))
+            Ok(Ok((_, message))) => Ok(message),
+            Ok(Err(e)) => Err(e),
+            _ => Err(anyhow!("Request timed out")),
         }
     }
 

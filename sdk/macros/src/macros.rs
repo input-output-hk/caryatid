@@ -3,7 +3,7 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemStruct, Meta, NestedMeta, LitStr, Lit, Fields};
+use syn::{parse_macro_input, Fields, ItemStruct, Lit, LitStr, Meta, NestedMeta};
 
 #[proc_macro_attribute]
 pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -21,25 +21,28 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Extract name and description from the attributes
     for meta in parsed_attrs {
-       match meta {
-           NestedMeta::Meta(Meta::NameValue(ref meta_name_value))
-               if meta_name_value.path.is_ident("name") => {
+        match meta {
+            NestedMeta::Meta(Meta::NameValue(ref meta_name_value))
+                if meta_name_value.path.is_ident("name") =>
+            {
                 if let Lit::Str(ref lit) = meta_name_value.lit {
                     name = Some(lit.clone());
                 }
             }
-           NestedMeta::Meta(Meta::NameValue(ref meta_name_value))
-               if meta_name_value.path.is_ident("description") => {
+            NestedMeta::Meta(Meta::NameValue(ref meta_name_value))
+                if meta_name_value.path.is_ident("description") =>
+            {
                 if let Lit::Str(ref lit) = meta_name_value.lit {
                     description = Some(lit.clone());
                 }
             }
-           NestedMeta::Meta(Meta::List(ref meta_list))
-               if meta_list.path.is_ident("message_type") => {
-                   if let Some(NestedMeta::Meta(Meta::Path(ref path))) = meta_list.nested.first() {
-                        message_type = Some(path.clone());
-                    }
+            NestedMeta::Meta(Meta::List(ref meta_list))
+                if meta_list.path.is_ident("message_type") =>
+            {
+                if let Some(NestedMeta::Meta(Meta::Path(ref path))) = meta_list.nested.first() {
+                    message_type = Some(path.clone());
                 }
+            }
             _ => {}
         }
     }
@@ -47,24 +50,21 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     let name = match name {
         Some(n) => n,
         None => {
-            return syn::Error::new_spanned(
-                &struct_name,
-                "Module attribute 'name' is required"
-            )
-            .to_compile_error()
-            .into();
+            return syn::Error::new_spanned(&struct_name, "Module attribute 'name' is required")
+                .to_compile_error()
+                .into();
         }
     };
 
-    let description = description.unwrap_or_else(
-        || LitStr::new("No description provided", name.span()));
+    let description =
+        description.unwrap_or_else(|| LitStr::new("No description provided", name.span()));
 
     let message_type = match message_type {
         Some(t) => t,
         None => {
             return syn::Error::new_spanned(
                 &struct_name,
-                "Module attribute 'message_type' is required"
+                "Module attribute 'message_type' is required",
             )
             .to_compile_error()
             .into();
@@ -76,8 +76,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {
             _marker: std::marker::PhantomData,
         }
-    }
-    else {
+    } else {
         quote! {}
     };
 

@@ -8,6 +8,5 @@ pub struct ClockTickMessage {
     pub time: DateTime<Utc>,
 
     /// Tick number
-    pub number: u64
+    pub number: u64,
 }
-

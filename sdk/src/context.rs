@@ -1,15 +1,15 @@
 // Shared context passed to each module
 
-use std::sync::Arc;
+use crate::message_bus::{MessageBounds, MessageBus};
+use crate::Subscription;
 use anyhow::Result;
 use config::Config;
-use crate::message_bus::{MessageBounds, MessageBus};
 use std::fmt;
 use std::future::Future;
+use std::sync::Arc;
 use tokio::sync::watch::Sender;
 use tokio::task;
 use tracing::error;
-use crate::Subscription;
 
 pub struct Context<M: MessageBounds> {
     pub config: Arc<Config>,
@@ -23,7 +23,11 @@ impl<M: MessageBounds> Context<M> {
         message_bus: Arc<dyn MessageBus<M>>,
         startup_watch: Sender<bool>,
     ) -> Self {
-        Self { config, message_bus, startup_watch }
+        Self {
+            config,
+            message_bus,
+            startup_watch,
+        }
     }
 
     pub fn run<T, F>(&self, func: F) -> task::JoinHandle<T>
@@ -64,18 +68,22 @@ impl<M: MessageBounds> Context<M> {
         let message_bus = self.message_bus.clone();
         self.run(async move {
             let request_topic = format!("{topic}.#.request");
-            let Ok(mut subscription) = message_bus.subscribe(&request_topic).await else { return; };
+            let Ok(mut subscription) = message_bus.subscribe(&request_topic).await else {
+                return;
+            };
             loop {
-                let Ok((topic, message)) = subscription.read().await else { return; };
+                let Ok((topic, message)) = subscription.read().await else {
+                    return;
+                };
                 let message = handler(message).await;
                 match topic.strip_suffix(".request") {
                     Some(topic) => {
                         let response_topic = format!("{topic}.response");
                         let _ = message_bus.publish(&response_topic, message).await;
-                    },
+                    }
                     None => {
                         error!("Badly formed response topic {}", topic);
-                    },
+                    }
                 }
             }
         })
@@ -85,8 +93,7 @@ impl<M: MessageBounds> Context<M> {
 /// Minimal implementation of Debug for tracing
 impl<M: MessageBounds> fmt::Debug for Context<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Context")
-            .finish()
+        f.debug_struct("Context").finish()
     }
 }
 
@@ -106,9 +113,7 @@ mod tests {
     }
 
     impl<M: MessageBounds> TestSetup<M> {
-
         fn new(config_str: &str) -> Self {
-
             // Set up tracing
             let _ = tracing_subscriber::fmt()
                 .with_max_level(Level::DEBUG)
@@ -125,7 +130,11 @@ mod tests {
             let mock = Arc::new(MockBus::<M>::new(&config));
 
             // Create context
-            let context = Arc::new(Context::<M>::new(Arc::new(config), mock, Sender::new(false)));
+            let context = Arc::new(Context::<M>::new(
+                Arc::new(config),
+                mock,
+                Sender::new(false),
+            ));
 
             Self { context }
         }
@@ -147,8 +156,10 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Request with no response should timeout
-        assert!(setup.context.request("test", Arc::new("Hello, world!".to_string()))
-                .await
-                .is_ok());
+        assert!(setup
+            .context
+            .request("test", Arc::new("Hello, world!".to_string()))
+            .await
+            .is_ok());
     }
 }

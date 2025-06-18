@@ -1,24 +1,26 @@
 //! Message super-bus which routes to other MessageBuses
-use tokio::sync::Mutex;
-use tokio::time::Duration;
+use anyhow::Result;
+use async_trait::async_trait;
+use caryatid_sdk::config::config_from_value;
+use caryatid_sdk::match_topic::match_topic;
+use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
+use config::Config;
+use futures::future::{select_all, BoxFuture};
+use std::collections::BTreeMap;
 use std::mem;
 use std::sync::Arc;
-use anyhow::Result;
-use config::Config;
-use futures::future::{BoxFuture, select_all};
-use tracing::{info, error};
-use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
-use caryatid_sdk::match_topic::match_topic;
-use caryatid_sdk::config::config_from_value;
-use std::collections::BTreeMap;
-use async_trait::async_trait;
+use tokio::sync::Mutex;
+use tokio::time::Duration;
+use tracing::{error, info};
 
 const DEFAULT_REQUEST_TIMEOUT: u64 = 5;
 
 // By creating a function that returns the subscription, we can keep the
 // subscription and corresponding future bound to each other whilst only
 // holding onto a set of futures
-fn read<'a, M: 'a>(mut subscription: Box<dyn Subscription<M>>) -> BoxFuture<'a, (anyhow::Result<(String, Arc<M>)>, Box<dyn Subscription<M>>)> {
+fn read<'a, M: 'a>(
+    mut subscription: Box<dyn Subscription<M>>,
+) -> BoxFuture<'a, (anyhow::Result<(String, Arc<M>)>, Box<dyn Subscription<M>>)> {
     Box::pin(async move {
         let result = subscription.read().await;
         (result, subscription)
@@ -33,9 +35,7 @@ impl<M: MessageBounds> SubscriptionBounds for RoutingSubscription<'_, M> {}
 
 impl<M> RoutingSubscription<'_, M> {
     fn new() -> Self {
-        Self {
-            reads: Vec::new(),
-        }
+        Self { reads: Vec::new() }
     }
 }
 
@@ -64,7 +64,6 @@ pub struct BusInfo<M: MessageBounds> {
 
 /// Routing super-bus
 pub struct RoutingBus<M: MessageBounds> {
-
     /// Buses
     buses: Arc<Mutex<BTreeMap<String, Arc<dyn MessageBus<M>>>>>,
 
@@ -76,9 +75,7 @@ pub struct RoutingBus<M: MessageBounds> {
 }
 
 impl<M: MessageBounds> RoutingBus<M> {
-    pub fn new(config: &Config,
-               bus_infos: Arc<Vec<Arc<BusInfo<M>>>>) -> Self {
-
+    pub fn new(config: &Config, bus_infos: Arc<Vec<Arc<BusInfo<M>>>>) -> Self {
         info!("Creating routing bus:");
 
         // Create buses map
@@ -95,12 +92,13 @@ impl<M: MessageBounds> RoutingBus<M> {
                 if let Ok(rt) = rconf.into_table() {
                     let rtc = config_from_value(rt);
                     if let Ok(pattern) = rtc.get_string("pattern") {
-
                         info!(" - Route {pattern} to: ");
-                        let mut route = Route { pattern, buses: Vec::new() };
+                        let mut route = Route {
+                            pattern,
+                            buses: Vec::new(),
+                        };
 
                         if let Ok(bus_id) = rtc.get_string("bus") {
-
                             // Single bus
                             if let Some(bus) = buses.get(&bus_id) {
                                 info!("   - {bus_id}");
@@ -108,9 +106,7 @@ impl<M: MessageBounds> RoutingBus<M> {
                             } else {
                                 error!("No such bus id {bus_id}");
                             }
-
                         } else if let Ok(bus_id_vs) = rtc.get_array("bus") {
-
                             // Multiple buses
                             for bus_id_v in bus_id_vs {
                                 if let Ok(bus_id) = bus_id_v.into_string() {
@@ -130,7 +126,9 @@ impl<M: MessageBounds> RoutingBus<M> {
             }
         }
 
-        let timeout = config.get::<u64>("request-timeout").unwrap_or(DEFAULT_REQUEST_TIMEOUT);
+        let timeout = config
+            .get::<u64>("request-timeout")
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT);
         let timeout = Duration::from_secs(timeout);
 
         Self {
@@ -143,17 +141,18 @@ impl<M: MessageBounds> RoutingBus<M> {
 
 #[async_trait]
 impl<M> MessageBus<M> for RoutingBus<M>
-where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
-
+where
+    M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned,
+{
     /// Publish a message on a given topic
     async fn publish(&self, topic: &str, message: Arc<M>) -> Result<()> {
-
         let topic = topic.to_string();
 
         // Get matching routes, limiting lock duration
         let matching: Vec<_> = {
             let routes = self.routes.lock().await;
-            routes.iter()
+            routes
+                .iter()
                 .filter(|route| match_topic(&route.pattern, &topic))
                 .map(Arc::clone)
                 .collect()
@@ -163,7 +162,7 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
             for bus in route.buses.iter() {
                 let _ = bus.publish(&topic, message.clone()).await;
             }
-            break;  // Stop after match
+            break; // Stop after match
         }
         Ok(())
     }
@@ -180,7 +179,8 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
         // Get matching routes, limiting lock duration
         let matching: Vec<_> = {
             let routes = self.routes.lock().await;
-            routes.iter()
+            routes
+                .iter()
                 .filter(|route| match_topic(&route.pattern, &topic))
                 .map(Arc::clone)
                 .collect()
@@ -192,13 +192,13 @@ where M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned {
                 match bus.subscribe(&topic).await {
                     Ok(sub) => {
                         subscription.reads.push(read(sub));
-                    },
+                    }
                     Err(e) => {
                         error!("Could not register subscription on topic {topic}: {e}");
-                    },
+                    }
                 }
             }
-            break;  // Stop after match
+            break; // Stop after match
         }
 
         Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
@@ -227,13 +227,11 @@ mod tests {
     struct TestSetup<M: MessageBounds> {
         mock_foo: Arc<MockBus<M>>,
         mock_bar: Arc<MockBus<M>>,
-        bus: RoutingBus<M>
+        bus: RoutingBus<M>,
     }
 
     impl<M: MessageBounds> TestSetup<M> {
-
         fn new(config_str: &str) -> Self {
-
             // Set up tracing
             let _ = tracing_subscriber::fmt()
                 .with_max_level(Level::DEBUG)
@@ -254,24 +252,27 @@ mod tests {
             let mut buses: Vec<Arc<BusInfo<M>>> = Vec::new();
             buses.push(Arc::new(BusInfo {
                 id: "foo".to_string(),
-                bus: mock_foo.clone()
+                bus: mock_foo.clone(),
             }));
 
             buses.push(Arc::new(BusInfo {
                 id: "bar".to_string(),
-                bus: mock_bar.clone()
+                bus: mock_bar.clone(),
             }));
 
             // Create the bus
             let bus = RoutingBus::<M>::new(&config, Arc::new(buses));
 
-            Self { mock_foo, mock_bar, bus }
+            Self {
+                mock_foo,
+                mock_bar,
+                bus,
+            }
         }
     }
 
     #[tokio::test]
     async fn subscribe_with_double_route_subscribes_to_both() {
-
         let config = r###"
 [[route]]
 pattern = "#"
@@ -298,7 +299,6 @@ bus = ["foo", "bar"]
 
     #[tokio::test]
     async fn subscribe_with_single_route_subscribes_to_only_one() {
-
         let config = r###"
 [[route]]
 pattern = "#"
@@ -323,7 +323,6 @@ bus = "foo"
 
     #[tokio::test]
     async fn publish_with_double_route_sends_to_both() {
-
         let config = r###"
 [[route]]
 pattern = "#"
@@ -333,7 +332,11 @@ bus = ["foo", "bar"]
         let setup = TestSetup::<String>::new(config);
 
         // Send a message
-        assert!(setup.bus.publish("test", Arc::new("Hello, world!".to_string())).await.is_ok());
+        assert!(setup
+            .bus
+            .publish("test", Arc::new("Hello, world!".to_string()))
+            .await
+            .is_ok());
 
         // Check foo got it
         let foo_publishes = setup.mock_foo.publishes.lock().await;
@@ -352,7 +355,6 @@ bus = ["foo", "bar"]
 
     #[tokio::test]
     async fn publish_with_single_route_sends_to_only_one() {
-
         let config = r###"
 [[route]]
 pattern = "test"
@@ -366,7 +368,11 @@ bus = ["foo", "bar"]
         let setup = TestSetup::<String>::new(config);
 
         // Send a message
-        assert!(setup.bus.publish("test", Arc::new("Hello, world!".to_string())).await.is_ok());
+        assert!(setup
+            .bus
+            .publish("test", Arc::new("Hello, world!".to_string()))
+            .await
+            .is_ok());
 
         // Check foo got it
         let foo_publishes = setup.mock_foo.publishes.lock().await;

@@ -1,13 +1,13 @@
 //! Caryatid performance test - publisher side
-use caryatid_sdk::{Context, Module, module};
-use std::sync::Arc;
-use arcstr::ArcStr;
-use anyhow::Result;
-use config::Config;
-use tracing::{info};
-use tokio::time::{sleep, Duration};
-use futures::future::join_all;
 use crate::message::Message;
+use anyhow::Result;
+use arcstr::ArcStr;
+use caryatid_sdk::{module, Context, Module};
+use config::Config;
+use futures::future::join_all;
+use std::sync::Arc;
+use tokio::time::{sleep, Duration};
+use tracing::info;
 
 /// Performance publisher module
 #[module(
@@ -22,9 +22,7 @@ const DEFAULT_THREADS: i64 = 1;
 const DEFAULT_LENGTH: i64 = 100;
 
 impl Publisher {
-
     async fn init(&self, context: Arc<Context<Message>>, config: Arc<Config>) -> Result<()> {
-
         // Get configuration
         let topic = config.get_string("topic").unwrap_or("test".to_string());
         let threads = config.get_int("threads").unwrap_or(DEFAULT_THREADS);
@@ -51,8 +49,10 @@ impl Publisher {
                     for _ in 1..=count {
                         // Avoid cloning the string and skewing the result
                         let message = Arc::new(Message::Data(arc_str.clone()));
-                        message_bus.publish(&topic, message)
-                            .await.expect("Failed to publish message");
+                        message_bus
+                            .publish(&topic, message)
+                            .await
+                            .expect("Failed to publish message");
                     }
                 }));
             }
@@ -65,11 +65,12 @@ impl Publisher {
 
             // Send a stop
             let message = Arc::new(Message::Stop(()));
-            message_bus.publish(&topic, message)
-                .await.expect("Failed to publish message");
+            message_bus
+                .publish(&topic, message)
+                .await
+                .expect("Failed to publish message");
         });
 
         Ok(())
     }
 }
-
