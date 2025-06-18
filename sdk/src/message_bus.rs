@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
+use crate::constants::{REQUEST_ID_PREFIX, RESPONSE_ID_PREFIX};
 
 /// Subscriber pattern function types - takes topic and message
 pub type Subscriber<M> = dyn Fn(&str, Arc<M>) -> BoxFuture<'static, ()> + Send + Sync + 'static;
@@ -41,8 +42,8 @@ pub trait MessageBus<M: MessageBounds>: Send + Sync {
         rand::fill(&mut random_bytes);
         let request_timeout = self.request_timeout();
         let request_id = hex::encode(random_bytes);
-        let response_topic = format!("{topic}.{request_id}.response");
-        let request_topic = format!("{topic}.{request_id}.request");
+        let response_topic = format!("{topic}.{RESPONSE_ID_PREFIX}.{request_id}");
+        let request_topic = format!("{topic}.{REQUEST_ID_PREFIX}.{request_id}");
         let mut subscription = self.subscribe(&response_topic).await?;
         let subscription_future = subscription.read();
         self.publish(&request_topic, message).await?;

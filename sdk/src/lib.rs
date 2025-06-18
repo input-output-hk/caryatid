@@ -1,6 +1,7 @@
 // Caryatid framework module SDK - main library exports
 pub mod config;
 pub mod context;
+pub mod constants;
 pub mod match_topic;
 pub mod message_bus;
 pub mod mock_bus;

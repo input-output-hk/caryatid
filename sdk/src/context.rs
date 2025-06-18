@@ -9,7 +9,7 @@ use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::watch::Sender;
 use tokio::task;
-use tracing::error;
+use crate::constants::{REQUEST_ID_PREFIX, RESPONSE_ID_PREFIX};
 
 pub struct Context<M: MessageBounds> {
     pub config: Arc<Config>,
@@ -67,7 +67,7 @@ impl<M: MessageBounds> Context<M> {
         let topic = topic.to_string();
         let message_bus = self.message_bus.clone();
         self.run(async move {
-            let request_topic = format!("{topic}.*.request");
+            let request_topic = format!("{topic}.{REQUEST_ID_PREFIX}.*");
             let Ok(mut subscription) = message_bus.subscribe(&request_topic).await else {
                 return;
             };
@@ -76,15 +76,8 @@ impl<M: MessageBounds> Context<M> {
                     return;
                 };
                 let message = handler(message).await;
-                match topic.strip_suffix(".request") {
-                    Some(topic) => {
-                        let response_topic = format!("{topic}.response");
-                        let _ = message_bus.publish(&response_topic, message).await;
-                    }
-                    None => {
-                        error!("Badly formed response topic {}", topic);
-                    }
-                }
+                let topic = topic.replacen(&format!(".{REQUEST_ID_PREFIX}."), &format!(".{RESPONSE_ID_PREFIX}."), 1);
+                let _ = message_bus.publish(&topic, message).await;
             }
         })
     }
