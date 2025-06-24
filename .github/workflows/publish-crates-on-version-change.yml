@@ -27,6 +27,9 @@ jobs:
           echo "Current Version (caryatid_macros): $current_version"
           echo "Published Version (caryatid_macros): $published_version"
 
+          curl_output = $(curl https://crates.io/api/v1/crates/caryatid_macros)
+          echo "curl: $curl_output"
+
           if [ "$current_version" != "$published_version" ]; then
             echo "Version changed. Publishing caryatid_macros..."
             cargo publish --manifest-path=sdk/macros/Cargo.toml
