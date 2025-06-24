@@ -22,13 +22,10 @@ jobs:
       - name: Publish caryatid_macros if version changed
         run: |
           current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_macros").version')
-          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_macros | jq -r '.crate.max_version')
+          published_version=$(curl -s -H "User-Agent: input-output-hk-caryatid-CI/0.1" https://crates.io/api/v1/crates/caryatid_macros | jq -r '.crate.max_version')
 
           echo "Current Version (caryatid_macros): $current_version"
           echo "Published Version (caryatid_macros): $published_version"
-
-          curl_output=$(curl https://crates.io/api/v1/crates/caryatid_macros)
-          echo "curl: $curl_output"
 
           if [ "$current_version" != "$published_version" ]; then
             echo "Version changed. Publishing caryatid_macros..."
@@ -41,8 +38,9 @@ jobs:
 
       - name: Publish caryatid_sdk if version changed
         run: |
+          sleep 1  # Don't trigger creates.io API limit
           current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_sdk").version')
-          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_sdk | jq -r '.crate.max_version')
+          published_version=$(curl -s -H "User-Agent: input-output-hk-caryatid-CI/0.1" https://crates.io/api/v1/crates/caryatid_sdk | jq -r '.crate.max_version')
 
           echo "Current Version (caryatid_sdk): $current_version"
           echo "Published Version (caryatid_sdk): $published_version"
@@ -58,8 +56,9 @@ jobs:
 
       - name: Publish caryatid_process if version changed
         run: |
+          sleep 1
           current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_process").version')
-          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_process | jq -r '.crate.max_version')
+          published_version=$(curl -s -H "User-Agent: input-output-hk-caryatid-CI/0.1" https://crates.io/api/v1/crates/caryatid_process | jq -r '.crate.max_version')
 
           echo "Current Version (caryatid_process): $current_version"
           echo "Published Version (caryatid_process): $published_version"
@@ -75,8 +74,9 @@ jobs:
 
       - name: Publish caryatid_module_clock if version changed
         run: |
+          sleep 1
           current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_module_clock").version')
-          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_module_clock | jq -r '.crate.max_version')
+          published_version=$(curl -s -H "User-Agent: input-output-hk-caryatid-CI/0.1" https://crates.io/api/v1/crates/caryatid_module_clock | jq -r '.crate.max_version')
 
           echo "Current Version (caryatid_module_clock): $current_version"
           echo "Published Version (caryatid_module_clock): $published_version"
@@ -92,8 +92,9 @@ jobs:
 
       - name: Publish caryatid_module_rest_server if version changed
         run: |
+          sleep 1
           current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_module_rest_server").version')
-          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_module_rest_server | jq -r '.crate.max_version')
+          published_version=$(curl -s -H "User-Agent: input-output-hk-caryatid-CI/0.1" https://crates.io/api/v1/crates/caryatid_module_rest_server | jq -r '.crate.max_version')
 
           echo "Current Version (caryatid_module_rest_server): $current_version"
           echo "Published Version (caryatid_module_rest_server): $published_version"
@@ -109,8 +110,9 @@ jobs:
 
       - name: Publish caryatid_module_spy if version changed
         run: |
+          sleep 1
           current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_module_spy").version')
-          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_module_spy | jq -r '.crate.max_version')
+          published_version=$(curl -s -H "User-Agent: input-output-hk-caryatid-CI/0.1" https://crates.io/api/v1/crates/caryatid_module_spy | jq -r '.crate.max_version')
 
           echo "Current Version (caryatid_module_spy): $current_version"
           echo "Published Version (caryatid_module_spy): $published_version"
@@ -126,8 +128,9 @@ jobs:
 
       - name: Publish caryatid_module_playback if version changed
         run: |
+          sleep 1
           current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_module_playback").version')
-          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_module_playback | jq -r '.crate.max_version')
+          published_version=$(curl -s -H "User-Agent: input-output-hk-caryatid-CI/0.1" https://crates.io/api/v1/crates/caryatid_module_playback | jq -r '.crate.max_version')
 
           echo "Current Version (caryatid_module_playback): $current_version"
           echo "Published Version (caryatid_module_playback): $published_version"
@@ -143,8 +146,9 @@ jobs:
 
       - name: Publish caryatid_module_record if version changed
         run: |
+          sleep 1
           current_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="caryatid_module_record").version')
-          published_version=$(curl -s https://crates.io/api/v1/crates/caryatid_module_record | jq -r '.crate.max_version')
+          published_version=$(curl -s -H "User-Agent: input-output-hk-caryatid-CI/0.1" https://crates.io/api/v1/crates/caryatid_module_record | jq -r '.crate.max_version')
 
           echo "Current Version (caryatid_module_record): $current_version"
           echo "Published Version (caryatid_module_record): $published_version"
