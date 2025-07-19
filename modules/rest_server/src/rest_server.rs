@@ -4,7 +4,7 @@
 use anyhow::Result;
 use caryatid_sdk::{module, Context, MessageBounds, Module};
 use config::Config;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tracing::{error, info};
 
 use axum::{
@@ -43,13 +43,30 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M> {
         // Generic request handler
         let handle_request = |req: Request<Body>| async move {
             info!(
-                "Received REST request {} {}",
+                "Received REST request {} {}{}",
                 req.method().as_str(),
-                req.uri().path()
+                req.uri().path(),
+                req.uri()
+                    .query()
+                    .map(|q| format!("?{}", q))
+                    .unwrap_or_default(),
             );
 
             let method = req.method().as_str().to_string();
             let path = req.uri().path().to_string();
+            let query_parameters: HashMap<String, String> = req
+                .uri()
+                .query()
+                .unwrap_or("")
+                .split('&')
+                .filter(|s| !s.is_empty())
+                .filter_map(|pair| {
+                    let mut parts = pair.splitn(2, '=');
+                    let key = parts.next()?;
+                    let value = parts.next().unwrap_or("");
+                    Some((key.to_string(), value.to_string()))
+                })
+                .collect();
 
             let bytes = match body::to_bytes(req.into_body()).await {
                 Ok(b) => b,
@@ -87,6 +104,7 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M> {
                 path,
                 body,
                 path_elements,
+                query_parameters,
             };
 
             let response = match message_bus.request(&topic, Arc::new(message.into())).await {
