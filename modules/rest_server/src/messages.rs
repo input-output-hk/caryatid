@@ -1,5 +1,7 @@
 //! Messages for REST server module
 
+use std::collections::HashMap;
+
 /// REST request message
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RESTRequest {
@@ -14,6 +16,9 @@ pub struct RESTRequest {
 
     /// Request body (if any)
     pub body: String,
+
+    /// Request query parameters
+    pub query_parameters: HashMap<String, String>,
 }
 
 /// REST response message
