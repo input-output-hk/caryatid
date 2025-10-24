@@ -1,13 +1,15 @@
 //! Message super-bus which routes to other MessageBuses
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use caryatid_sdk::config::config_from_value;
 use caryatid_sdk::match_topic::match_topic;
 use caryatid_sdk::message_bus::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
 use config::Config;
-use futures::future::{select_all, BoxFuture};
+use futures::{
+    future::BoxFuture,
+    stream::{FuturesUnordered, StreamExt},
+};
 use std::collections::BTreeMap;
-use std::mem;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
@@ -28,25 +30,30 @@ fn read<'a, M: 'a>(
 }
 
 struct RoutingSubscription<'a, M> {
-    pub reads: Vec<BoxFuture<'a, (anyhow::Result<(String, Arc<M>)>, Box<dyn Subscription<M>>)>>,
+    pub reads: FuturesUnordered<
+        BoxFuture<'a, (anyhow::Result<(String, Arc<M>)>, Box<dyn Subscription<M>>)>,
+    >,
 }
 
 impl<M: MessageBounds> SubscriptionBounds for RoutingSubscription<'_, M> {}
 
 impl<M> RoutingSubscription<'_, M> {
     fn new() -> Self {
-        Self { reads: Vec::new() }
+        Self {
+            reads: FuturesUnordered::new(),
+        }
     }
 }
 
 impl<M: MessageBounds> Subscription<M> for RoutingSubscription<'_, M> {
     fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
         Box::pin(async move {
-            let reads = mem::take(&mut self.reads);
-            let ((result, subscription), _, mut remaining) = select_all(reads).await;
-            remaining.push(read(subscription));
-            self.reads = remaining;
-            result
+            if let Some((result, subscription)) = self.reads.next().await {
+                self.reads.push(read(subscription));
+                result
+            } else {
+                Err(anyhow!("Nothing to read from"))
+            }
         })
     }
 }
@@ -186,7 +193,7 @@ where
                 .collect()
         };
 
-        let mut subscription = RoutingSubscription::new();
+        let subscription = RoutingSubscription::new();
         for route in matching {
             for bus in route.buses.iter() {
                 match bus.subscribe(&topic).await {
@@ -220,6 +227,7 @@ mod tests {
     use super::*;
     use caryatid_sdk::mock_bus::MockBus;
     use config::{Config, FileFormat};
+    use tokio::time::timeout;
     use tracing::Level;
     use tracing_subscriber;
 
@@ -398,5 +406,34 @@ bus = ["foo", "bar"]
 
         // Check bar got it
         assert_eq!(*setup.mock_bar.shutdowns.lock().await, 1);
+    }
+
+    #[tokio::test]
+    async fn can_read_after_timeout() {
+        let setup = TestSetup::<String>::new("");
+
+        // Subscribe
+        let Ok(mut subscription) = setup.bus.subscribe("test").await else {
+            panic!("Failed to subscribe")
+        };
+
+        assert!(setup
+            .bus
+            .publish("test", Arc::new("Hello, world!".to_string()))
+            .await
+            .is_ok());
+
+        let _ = timeout(Duration::from_millis(1), async {
+            let _ = subscription.read().await;
+        })
+        .await;
+
+        assert!(setup
+            .bus
+            .publish("test", Arc::new("Hello, world!".to_string()))
+            .await
+            .is_ok());
+
+        let _ = subscription.read().await;
     }
 }
