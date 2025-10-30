@@ -43,7 +43,7 @@ impl<M: MessageBounds> Subscription<M> for RabbitMQSubscription<M> {
                         .with_context(|| "Failed to acknowledge message")?;
 
                     // Decode it
-                    match serde_cbor::de::from_slice::<M>(&delivery.data) {
+                    match minicbor_serde::from_slice(&delivery.data) {
                         Ok(message) => {
                             // Call the subscriber function with the message
                             return Ok((delivery.routing_key.to_string(), Arc::new(message)));
@@ -130,7 +130,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned> MessageB
         let channel = self.channel.lock().await;
 
         // Serialise the message
-        let payload = serde_cbor::ser::to_vec(&*message)?;
+        let payload = minicbor_serde::to_vec(&*message)?;
 
         // Publish the message to the queue
         channel
