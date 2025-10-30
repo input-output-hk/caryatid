@@ -107,10 +107,10 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         // Implement Module init etc.
         #[caryatid_sdk::async_trait]
-        impl #impl_generics Module<#message_type> for #struct_name #type_generics #where_clause {
+        impl #impl_generics caryatid_sdk::Module<#message_type> for #struct_name #type_generics #where_clause {
 
             // Implement init, calling down to struct's own
-            async fn init(&self, context: Arc<Context<#message_type>>, config: Arc<Config>)
+            async fn init(&self, context: Arc<caryatid_sdk::Context<#message_type>>, config: std::sync::Arc<::config::Config>)
                     -> anyhow::Result<()> {
                 #struct_name::init(self, context, config).await
             }
