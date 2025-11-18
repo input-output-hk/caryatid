@@ -55,15 +55,15 @@ struct SerializedModuleState {
     writes: BTreeMap<String, SerializedWriteStreamState>,
 }
 
-const fn default_frequency() -> Duration {
-    Duration::from_secs(5)
+const fn default_frequency() -> f64 {
+    5.0
 }
 
 #[derive(Deserialize)]
 pub struct MonitorConfig {
     output: PathBuf,
     #[serde(default = "default_frequency")]
-    frequency: Duration,
+    frequency_secs: f64,
 }
 
 pub struct Monitor {
@@ -78,7 +78,7 @@ impl Monitor {
             modules: BTreeMap::new(),
             stream_writes: Arc::new(DashMap::new()),
             output_path: config.output,
-            write_frequency: config.frequency,
+            write_frequency: Duration::from_secs_f64(config.frequency_secs),
         }
     }
 
