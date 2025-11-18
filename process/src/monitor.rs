@@ -172,9 +172,11 @@ impl<M: MessageBounds> MessageBus<M> for MonitorBus<M> {
             .pending_since = Some(Instant::now());
         let res = self.inner.publish(topic, message).await;
         let mut writes = self.state.writes.entry(topic.to_string()).or_default();
-        writes.written += 1;
         writes.pending_since = None;
-        *self.stream_writes.entry(topic.to_string()).or_default() += 1;
+        if res.is_ok() {
+            writes.written += 1;
+            *self.stream_writes.entry(topic.to_string()).or_default() += 1;
+        }
         res
     }
 
