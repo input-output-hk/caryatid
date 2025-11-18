@@ -2,7 +2,7 @@
 
 [package]
 name = "caryatid_sdk"
-version = "0.12.2"
+version = "0.13.0"
 edition = "2021"
 authors = ["Paul Clark <paul.clark@iohk.io>"]
 description = "The Caryatid framework module SDK"
