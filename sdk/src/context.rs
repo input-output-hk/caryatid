@@ -1,5 +1,6 @@
 // Shared context passed to each module
 
+use crate::constants::{REQUEST_ID_PREFIX, RESPONSE_ID_PREFIX};
 use crate::message_bus::{MessageBounds, MessageBus};
 use crate::Subscription;
 use anyhow::Result;
@@ -7,21 +8,39 @@ use config::Config;
 use std::fmt;
 use std::future::Future;
 use std::sync::Arc;
-use tokio::sync::watch::Sender;
+use tokio::sync::watch::{Receiver, Sender};
 use tokio::task;
-use crate::constants::{REQUEST_ID_PREFIX, RESPONSE_ID_PREFIX};
+
+pub struct GlobalContext<M: MessageBounds> {
+    pub config: Arc<Config>,
+    pub message_bus: Arc<dyn MessageBus<M>>,
+    pub startup_watch: Sender<bool>,
+}
+impl<M: MessageBounds> GlobalContext<M> {
+    pub fn new(
+        config: Arc<Config>,
+        message_bus: Arc<dyn MessageBus<M>>,
+        startup_watch: Sender<bool>,
+    ) -> Self {
+        Self {
+            config,
+            message_bus,
+            startup_watch,
+        }
+    }
+}
 
 pub struct Context<M: MessageBounds> {
     pub config: Arc<Config>,
     pub message_bus: Arc<dyn MessageBus<M>>,
-    pub startup_watch: Sender<bool>,
+    pub startup_watch: Receiver<bool>,
 }
 
 impl<M: MessageBounds> Context<M> {
     pub fn new(
         config: Arc<Config>,
         message_bus: Arc<dyn MessageBus<M>>,
-        startup_watch: Sender<bool>,
+        startup_watch: Receiver<bool>,
     ) -> Self {
         Self {
             config,
@@ -35,7 +54,8 @@ impl<M: MessageBounds> Context<M> {
         T: Send + 'static,
         F: Future<Output = T> + Send + 'static,
     {
-        let mut signal = self.startup_watch.subscribe();
+        let mut signal = self.startup_watch.clone();
+        signal.mark_changed();
         tokio::spawn(async move {
             loop {
                 let _ = signal.changed().await;
@@ -76,7 +96,11 @@ impl<M: MessageBounds> Context<M> {
                     return;
                 };
                 let message = handler(message).await;
-                let topic = topic.replacen(&format!(".{REQUEST_ID_PREFIX}."), &format!(".{RESPONSE_ID_PREFIX}."), 1);
+                let topic = topic.replacen(
+                    &format!(".{REQUEST_ID_PREFIX}."),
+                    &format!(".{RESPONSE_ID_PREFIX}."),
+                    1,
+                );
                 let _ = message_bus.publish(&topic, message).await;
             }
         })
@@ -103,6 +127,7 @@ mod tests {
     // Helper to set up a correlation bus with a mock sub-bus, from given config string
     struct TestSetup<M: MessageBounds> {
         context: Arc<Context<M>>,
+        startup_watch: Sender<bool>,
     }
 
     impl<M: MessageBounds> TestSetup<M> {
@@ -122,14 +147,18 @@ mod tests {
             // Create mock bus
             let mock = Arc::new(MockBus::<M>::new(&config));
 
+            let startup_watch = Sender::new(false);
             // Create context
             let context = Arc::new(Context::<M>::new(
                 Arc::new(config),
                 mock,
-                Sender::new(false),
+                startup_watch.subscribe(),
             ));
 
-            Self { context }
+            Self {
+                context,
+                startup_watch,
+            }
         }
     }
 
@@ -143,7 +172,7 @@ mod tests {
             ready(Arc::new("Nice to meet you".to_string()))
         });
 
-        let _ = setup.context.startup_watch.send(true);
+        let _ = setup.startup_watch.send(true);
 
         // Wait for responder to be ready
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

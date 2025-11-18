@@ -1,17 +1,17 @@
 //! Generic MessageBus trait for any pub-sub bus
+use crate::constants::{REQUEST_ID_PREFIX, RESPONSE_ID_PREFIX};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
-use crate::constants::{REQUEST_ID_PREFIX, RESPONSE_ID_PREFIX};
 
 /// Subscriber pattern function types - takes topic and message
 pub type Subscriber<M> = dyn Fn(&str, Arc<M>) -> BoxFuture<'static, ()> + Send + Sync + 'static;
 
 pub trait SubscriptionBounds: Send {}
 pub trait Subscription<M>: SubscriptionBounds {
-    fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>>;
+    fn read(&mut self) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>>;
 }
 
 /// Message bounds trait (awaiting trait aliases)

@@ -3,6 +3,7 @@
 
 use anyhow::{anyhow, Result};
 use caryatid_sdk::config::{config_from_value, get_sub_config};
+use caryatid_sdk::context::GlobalContext;
 use caryatid_sdk::{Context, MessageBounds, MessageBus, Module, ModuleRegistry};
 use config::Config;
 use std::collections::HashMap;
@@ -13,6 +14,9 @@ use tracing::{error, info, warn};
 
 mod in_memory_bus;
 use in_memory_bus::InMemoryBus;
+
+mod monitor;
+use monitor::{Monitor, MonitorConfig};
 
 mod rabbit_mq_bus;
 use rabbit_mq_bus::RabbitMQBus;
@@ -26,7 +30,7 @@ pub struct Process<M: MessageBounds> {
     config: Arc<Config>,
 
     /// Global context
-    context: Arc<Context<M>>,
+    context: GlobalContext<M>,
 
     /// Active modules by name
     modules: HashMap<String, Arc<dyn Module<M>>>,
@@ -89,11 +93,7 @@ impl<M: MessageBounds> Process<M> {
         ));
 
         // Create the shared context
-        let context = Arc::new(Context::new(
-            config.clone(),
-            routing_bus.clone(),
-            Sender::new(false),
-        ));
+        let context = GlobalContext::new(config.clone(), routing_bus.clone(), Sender::new(false));
 
         Self {
             config,
@@ -105,6 +105,11 @@ impl<M: MessageBounds> Process<M> {
     /// Run the process
     pub async fn run(&self) -> Result<()> {
         info!("Initialising...");
+
+        let mut monitor = None;
+        if let Ok(monitor_config) = self.config.get::<MonitorConfig>("monitor") {
+            monitor = Some(Monitor::new(monitor_config));
+        }
 
         // Initialise all the modules from [module.<id>] configuration
         if let Ok(mod_confs) = self.config.get_table("module") {
@@ -119,10 +124,18 @@ impl<M: MessageBounds> Process<M> {
                     // Look up the module
                     if let Some(module) = self.modules.get(&module_name) {
                         info!("Initialising module {id}");
-                        module
-                            .init(self.context.clone(), Arc::new(modc))
-                            .await
-                            .unwrap();
+                        let message_bus = self.context.message_bus.clone();
+                        let message_bus = if let Some(m) = &mut monitor {
+                            m.spy_on_bus(&module_name, message_bus)
+                        } else {
+                            message_bus
+                        };
+                        let context = Arc::new(Context::new(
+                            self.config.clone(),
+                            message_bus,
+                            self.context.startup_watch.subscribe(),
+                        ));
+                        module.init(context, Arc::new(modc)).await.unwrap();
                     } else {
                         error!("Unrecognised module class: {module_name} in [module.{id}]");
                     }
@@ -133,6 +146,10 @@ impl<M: MessageBounds> Process<M> {
         }
 
         info!("Running...");
+
+        if let Some(monitor) = monitor {
+            tokio::spawn(monitor.monitor());
+        }
 
         // Send startup message if required
         let _ = self.context.startup_watch.send(true);
