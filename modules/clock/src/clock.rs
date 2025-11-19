@@ -2,7 +2,7 @@
 //! Generates regular clock.tick events
 
 use anyhow::Result;
-use caryatid_sdk::{module, Context, MessageBounds, Module};
+use caryatid_sdk::{module, Context, MessageBounds};
 use chrono::{DateTime, Utc};
 use config::Config;
 use std::sync::Arc;
@@ -70,6 +70,7 @@ impl<M: From<ClockTickMessage> + MessageBounds> Clock<M> {
 mod tests {
     use super::*;
     use caryatid_sdk::mock_bus::MockBus;
+    use caryatid_sdk::Module;
     use config::{Config, FileFormat};
     use tokio::sync::{mpsc, watch::Sender, Notify};
     use tokio::time::{timeout, Duration};
@@ -99,6 +100,7 @@ mod tests {
     struct TestSetup {
         module: Arc<dyn Module<Message>>,
         context: Arc<Context<Message>>,
+        startup_watch: Sender<bool>,
     }
 
     impl TestSetup {
@@ -120,12 +122,9 @@ mod tests {
             // Create mock bus
             let bus = Arc::new(MockBus::<Message>::new(&config));
 
+            let startup_watch = Sender::new(false);
             // Create a context
-            let context = Arc::new(Context::new(
-                config.clone(),
-                bus.clone(),
-                Sender::<bool>::new(false),
-            ));
+            let context = Arc::new(Context::new(config.clone(), bus, startup_watch.subscribe()));
 
             // Create the clock
             let clock = Clock::<Message> {
@@ -136,11 +135,12 @@ mod tests {
             Self {
                 module: Arc::new(clock),
                 context,
+                startup_watch,
             }
         }
 
         fn start(&self) {
-            let _ = self.context.startup_watch.send(true);
+            let _ = self.startup_watch.send(true);
         }
     }
 

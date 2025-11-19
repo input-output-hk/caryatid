@@ -2,7 +2,7 @@
 //! Provides a REST endpoint which integrates with the message bus
 
 use anyhow::Result;
-use caryatid_sdk::{module, Context, MessageBounds, Module};
+use caryatid_sdk::{module, Context, MessageBounds};
 use config::Config;
 use std::{collections::HashMap, sync::Arc};
 use tracing::{error, info};
@@ -176,6 +176,7 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M> {
 mod tests {
     use super::*;
     use caryatid_sdk::mock_bus::MockBus;
+    use caryatid_sdk::Module;
     use config::{Config, FileFormat};
     use futures::future;
     use hyper::Client;
@@ -227,6 +228,7 @@ mod tests {
     struct TestSetup {
         module: Arc<dyn Module<Message>>,
         context: Arc<Context<Message>>,
+        startup_watch: Sender<bool>,
     }
 
     impl TestSetup {
@@ -249,10 +251,11 @@ mod tests {
             let mock_bus = Arc::new(MockBus::<Message>::new(&config));
 
             // Create a context
+            let startup_watch = Sender::new(false);
             let context = Arc::new(Context::new(
                 config.clone(),
-                mock_bus.clone(),
-                Sender::<bool>::new(false),
+                mock_bus,
+                startup_watch.subscribe(),
             ));
 
             // Create the server
@@ -264,11 +267,12 @@ mod tests {
             Self {
                 module: Arc::new(rest_server),
                 context,
+                startup_watch,
             }
         }
 
         fn start(&self) {
-            let _ = self.context.startup_watch.send(true);
+            let _ = self.startup_watch.send(true);
         }
     }
 
