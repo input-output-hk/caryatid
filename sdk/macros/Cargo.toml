@@ -2,7 +2,7 @@
 
 [package]
 name = "caryatid_macros"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 authors = ["Paul Clark <paul.clark@iohk.io>"]
 description = "Procedural macros for the Caryatid framework module SDK"
