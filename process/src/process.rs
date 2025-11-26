@@ -2,7 +2,7 @@
 //! Loads and runs modules built with caryatid-sdk
 
 use anyhow::{anyhow, Result};
-use caryatid_sdk::config::{config_from_value, get_sub_config};
+use caryatid_sdk::config::{build_module_config, config_from_value, get_sub_config};
 use caryatid_sdk::context::GlobalContext;
 use caryatid_sdk::{Context, MessageBounds, MessageBus, Module, ModuleRegistry};
 use config::Config;
@@ -58,7 +58,7 @@ impl<M: MessageBounds> Process<M> {
             }
         };
 
-        return Ok(BusInfo { id, bus });
+        Ok(BusInfo { id, bus })
     }
 
     /// Create a process with the given config
@@ -78,7 +78,6 @@ impl<M: MessageBounds> Process<M> {
                             Ok(bus) => {
                                 buses.push(Arc::new(bus));
                             }
-
                             _ => {}
                         }
                     }
@@ -112,36 +111,36 @@ impl<M: MessageBounds> Process<M> {
         }
 
         // Initialise all the modules from [module.<id>] configuration
-        if let Ok(mod_confs) = self.config.get_table("module") {
-            for (id, mod_conf) in mod_confs {
-                if let Ok(modt) = mod_conf.into_table() {
-                    let modc = config_from_value(modt);
-                    let mut module_name = id.clone(); // Default
-                    if let Ok(class) = modc.get_string("class") {
-                        module_name = class;
-                    }
-
-                    // Look up the module
-                    if let Some(module) = self.modules.get(&module_name) {
-                        info!("Initialising module {id}");
-                        let message_bus = self.context.message_bus.clone();
-                        let message_bus = if let Some(m) = &mut monitor {
-                            m.spy_on_bus(&module_name, message_bus)
-                        } else {
-                            message_bus
-                        };
-                        let context = Arc::new(Context::new(
-                            self.config.clone(),
-                            message_bus,
-                            self.context.startup_watch.subscribe(),
-                        ));
-                        module.init(context, Arc::new(modc)).await.unwrap();
-                    } else {
-                        error!("Unrecognised module class: {module_name} in [module.{id}]");
-                    }
-                } else {
+        if let Ok(module_cfgs) = self.config.get_table("module") {
+            for (id, module_cfg) in module_cfgs {
+                let Ok(module_tbl) = module_cfg.into_table() else {
                     warn!("Bad configuration for module {id} ignored");
-                }
+                    continue;
+                };
+
+                let module_cfg = build_module_config(&self.config, module_tbl);
+                let module_name = module_cfg.get_string("class").unwrap_or_else(|_| id.clone());
+
+                let Some(module) = self.modules.get(&module_name) else {
+                    error!("Unrecognised module class: {module_name} in [module.{id}]");
+                    continue;
+                };
+
+                info!("Initialising module {id}");
+
+                let message_bus = self.context.message_bus.clone();
+                let message_bus = match &mut monitor {
+                    Some(m) => m.spy_on_bus(&module_name, message_bus),
+                    None => message_bus,
+                };
+
+                let context = Arc::new(Context::new(
+                    self.config.clone(),
+                    message_bus,
+                    self.context.startup_watch.subscribe(),
+                ));
+
+                module.init(context, Arc::new(module_cfg)).await?;
             }
         }
 
@@ -151,9 +150,9 @@ impl<M: MessageBounds> Process<M> {
             tokio::spawn(monitor.monitor());
         }
 
-        // Send startup message if required
+        // Send the startup message if required
         let _ = self.context.startup_watch.send(true);
-        if let Ok(topic) = self.config.get_string("startup.topic") {
+        if let Ok(topic) = self.config.get_string("global.startup.topic") {
             self.context
                 .message_bus
                 .publish(&topic, Arc::new(M::default()))
