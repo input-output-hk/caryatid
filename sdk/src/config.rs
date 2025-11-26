@@ -121,6 +121,59 @@ mod tests {
     }
 
     #[test]
+    fn test_build_module_config_no_global_section() {
+        let root_config = config_from_toml("[other]\nkey = \"value\"");
+
+        let mut module_table = HashMap::new();
+        module_table.insert("name".to_string(), config::Value::new(None, "my-module"));
+
+        let module_cfg = build_module_config(&root_config, module_table);
+
+        assert_eq!(module_cfg.get_string("name").unwrap(), "my-module");
+    }
+
+    #[test]
+    fn test_build_module_config_nested_override() {
+        let root_config = config_from_toml(
+            r#"
+        [global.startup]
+        method = "default"
+        timeout = 30
+        "#,
+        );
+
+        let mut module_table = HashMap::new();
+        module_table.insert(
+            "startup.method".to_string(),
+            config::Value::new(None, "fast"),
+        );
+
+        let module_cfg = build_module_config(&root_config, module_table);
+
+        assert_eq!(module_cfg.get_string("startup.method").unwrap(), "fast");
+        assert_eq!(module_cfg.get_int("startup.timeout").unwrap(), 30);
+    }
+
+    #[test]
+    fn test_build_module_config_from_parsed_table() {
+        let config = config_from_toml(
+            r#"
+        [global]
+        shared = "global-value"
+
+        [module.my-module]
+        name = "test"
+        "#,
+        );
+
+        let module_table = config.get_table("module.my-module").unwrap();
+        let module_cfg = build_module_config(&config, module_table);
+
+        assert_eq!(module_cfg.get_string("shared").unwrap(), "global-value");
+        assert_eq!(module_cfg.get_string("name").unwrap(), "test");
+    }
+
+    #[test]
     fn test_build_module_config_module_overrides_global() {
         let root_config = config_from_toml(
             r#"
