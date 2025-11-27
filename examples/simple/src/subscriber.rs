@@ -1,6 +1,6 @@
 //! Simple Caraytid module - subscriber side
 use anyhow::Result;
-use caryatid_sdk::{module, Context, Module};
+use caryatid_sdk::{module, Context};
 use config::Config;
 use std::sync::Arc;
 use tracing::info;

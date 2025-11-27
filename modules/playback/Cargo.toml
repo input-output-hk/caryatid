@@ -9,7 +9,7 @@ description = "Message playback module for Caryatid"
 license = "Apache-2.0"
 
 [dependencies]
-caryatid_sdk = { version="0.13", path = "../../sdk" }
+caryatid_sdk = { version = "0.14", path = "../../sdk" }
 anyhow = "1.0"
 serde_json = "1.0"
 config = "0.15.11"

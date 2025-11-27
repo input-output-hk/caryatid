@@ -1,6 +1,6 @@
 //! Simple Caraytid module - responder side
 use anyhow::Result;
-use caryatid_sdk::{module, Context, Module};
+use caryatid_sdk::{module, Context};
 use config::Config;
 use serde_json::Value;
 use std::sync::Arc;

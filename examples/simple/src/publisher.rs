@@ -1,6 +1,6 @@
 //! Sample Caraytid module - publisher side
 use anyhow::Result;
-use caryatid_sdk::{module, Context, Module};
+use caryatid_sdk::{module, Context};
 use config::Config;
 use serde_json::json;
 use std::sync::Arc;

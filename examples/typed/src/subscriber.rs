@@ -1,7 +1,7 @@
 //! Simple Caraytid module - subscriber side
 use crate::message::Message;
 use anyhow::Result;
-use caryatid_sdk::{module, Context, Module};
+use caryatid_sdk::{module, Context};
 use chrono::Local;
 use config::Config;
 use std::sync::Arc;

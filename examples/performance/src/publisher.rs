@@ -2,7 +2,7 @@
 use crate::message::Message;
 use anyhow::Result;
 use arcstr::ArcStr;
-use caryatid_sdk::{module, Context, Module};
+use caryatid_sdk::{module, Context};
 use config::Config;
 use futures::future::join_all;
 use std::sync::Arc;
