@@ -1,7 +1,7 @@
 //! Caryatid Record module
 
 use anyhow::{Error, Result};
-use caryatid_sdk::{module, Context, MessageBounds, Module};
+use caryatid_sdk::{module, Context, MessageBounds};
 use config::Config;
 use std::fs::File;
 use std::path::{Path, PathBuf};

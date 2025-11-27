@@ -1,7 +1,7 @@
 //! Caryatid Spy module
 
 use anyhow::Result;
-use caryatid_sdk::{module, Context, MessageBounds, Module};
+use caryatid_sdk::{module, Context, MessageBounds};
 use config::Config;
 use std::sync::Arc;
 use tracing::{error, info};
