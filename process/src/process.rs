@@ -119,7 +119,9 @@ impl<M: MessageBounds> Process<M> {
                 };
 
                 let module_cfg = build_module_config(&self.config, module_tbl);
-                let module_name = module_cfg.get_string("class").unwrap_or_else(|_| id.clone());
+                let module_name = module_cfg
+                    .get_string("class")
+                    .unwrap_or_else(|_| id.clone());
 
                 let Some(module) = self.modules.get(&module_name) else {
                     error!("Unrecognised module class: {module_name} in [module.{id}]");
