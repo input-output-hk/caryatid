@@ -2,7 +2,7 @@
 
 [package]
 name = "caryatid_module_playback"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2021"
 authors = ["Alex Woods <alex.woods@iohk.io>"]
 description = "Message playback module for Caryatid"
