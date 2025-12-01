@@ -59,13 +59,13 @@ Assuming the module is created with message_type `serde_json::Value` as above:
 
 ```rust
     let topic = "test.simple";
-let test_message = Arc::new(json!({
+    let test_message = Arc::new(json!({
         "message": "Hello, world!",
     }));
 
-context.message_bus.publish(topic, test_message)
-.await
-.expect("Failed to publish message");
+    context.message_bus.publish(topic, test_message)
+      .await
+      .expect("Failed to publish message");
 ```
 
 Note that the message must be wrapped in an `Arc` to be passed around. You can see that publish
@@ -76,10 +76,10 @@ is async, so this needs to be called in an async context.
 ```rust
     let topic = "test.simple";
 
-context.message_bus.subscribe( & topic,
-| message: Arc<serde_json::Value>| {
-info ! ("Received: {:?}", message);
-}) ?;
+    context.message_bus.subscribe(&topic,
+                                  |message: Arc<serde_json::Value>| {
+       info!("Received: {:?}", message);
+    })?;
 ```
 
 The subscriber is a closure (lambda) which takes an Arc containing the message type.
@@ -96,14 +96,14 @@ implementation-independent way. In this case you call `context.message_bus.reque
 
 ```rust
     let topic = "test.simple";
-let test_message = Arc::new(json!({
+    let test_message = Arc::new(json!({
         "message": "Hello, world!",
     }));
 
-match context.message_bus.request(topic, test_message).await {
-Ok(response) => { info ! ("Got response: {:?}", response); },
-Err(e) => { error ! ("Got error: {e}"); }
-}
+    match context.message_bus.request(topic, test_message).await {
+      Ok(response) => { info!("Got response: {:?}", response); },
+      Err(e) => { error!("Got error: {e}"); }
+    }
 ```
 
 `request()` returns a Result, which either contains an `Arc` of the response message, or an error
@@ -117,15 +117,15 @@ an `Arc` with the message type.
 
 ```rust
     async fn handler(message: Arc<Value>) -> Arc<Value> {
-    let response = json!({
+        let response = json!({
           "message": "Pleased to meet you!",
         });
 
-    Arc::new(response)
-}
+        Arc::new(response)
+    }
 
-let topic = "test.simple";
-context.message_bus.handle(topic, handler) ?;
+    let topic = "test.simple";
+    context.message_bus.handle(topic, handler)?;
 ```
 
 Note that as above the handler must return a valid message - it cannot return an Error.
