@@ -184,6 +184,10 @@ impl<M: MessageBounds> Process<M> {
         // Shutdown the message bus and all subscriptions (before losing modules)
         let _ = self.context.message_bus.shutdown().await;
 
+        if let Some(monitor) = self.monitor {
+            monitor.abort();
+        }
+
         Ok(())
     }
 }
