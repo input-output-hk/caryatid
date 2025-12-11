@@ -34,9 +34,6 @@ pub struct Process<M: MessageBounds> {
 
     /// Active modules by name
     modules: HashMap<String, Arc<dyn Module<M>>>,
-
-    /// A handle to the monitor task, if one is running
-    monitor: Option<JoinHandle<()>>,
 }
 
 impl<M: MessageBounds> Process<M> {
@@ -101,23 +98,22 @@ impl<M: MessageBounds> Process<M> {
             config,
             context,
             modules: HashMap::new(),
-            monitor: None,
         }
     }
 
     /// Run the process
-    pub async fn run(mut self) -> Result<()> {
-        self.start().await?;
+    pub async fn run(self) -> Result<()> {
+        let process = self.start().await?;
 
         // Wait for SIGINT
         tokio::signal::ctrl_c().await?;
 
         info!("SIGINT received. Shutting down...");
 
-        self.stop().await
+        process.stop().await
     }
 
-    pub async fn start(&mut self) -> Result<()> {
+    pub async fn start(self) -> Result<RunningProcess<M>> {
         info!("Initialising...");
 
         let mut monitor = None;
@@ -163,9 +159,7 @@ impl<M: MessageBounds> Process<M> {
 
         info!("Running...");
 
-        if let Some(monitor) = monitor {
-            self.monitor = Some(tokio::spawn(monitor.monitor()));
-        }
+        let monitor_task = monitor.map(|m| tokio::spawn(m.monitor()));
 
         // Send the startup message if required
         let _ = self.context.startup_watch.send(true);
@@ -177,18 +171,10 @@ impl<M: MessageBounds> Process<M> {
                 .unwrap_or_else(|e| error!("Failed to publish: {e}"));
         }
 
-        Ok(())
-    }
-
-    pub async fn stop(self) -> Result<()> {
-        // Shutdown the message bus and all subscriptions (before losing modules)
-        let _ = self.context.message_bus.shutdown().await;
-
-        if let Some(monitor) = self.monitor {
-            monitor.abort();
-        }
-
-        Ok(())
+        Ok(RunningProcess {
+            context: self.context,
+            monitor: monitor_task,
+        })
     }
 }
 
@@ -198,5 +184,27 @@ impl<M: MessageBounds> ModuleRegistry<M> for Process<M> {
     fn register(&mut self, module: Arc<dyn Module<M>>) {
         let name = module.get_name();
         self.modules.insert(name.to_string(), module.clone());
+    }
+}
+
+pub struct RunningProcess<M: MessageBounds> {
+    /// Global context
+    context: GlobalContext<M>,
+
+    /// A handle to the monitor task, if one is running
+    monitor: Option<JoinHandle<()>>,
+}
+
+impl<M: MessageBounds> RunningProcess<M> {
+    /// Gracefully stop the process.
+    pub async fn stop(self) -> Result<()> {
+        // Shutdown the message bus and all subscriptions (before losing modules)
+        let _ = self.context.message_bus.shutdown().await;
+
+        if let Some(monitor) = self.monitor {
+            monitor.abort();
+        }
+
+        Ok(())
     }
 }
