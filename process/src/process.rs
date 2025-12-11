@@ -8,8 +8,8 @@ use caryatid_sdk::{Context, MessageBounds, MessageBus, Module, ModuleRegistry};
 use config::Config;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch::Sender;
+use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
 mod in_memory_bus;
@@ -34,6 +34,9 @@ pub struct Process<M: MessageBounds> {
 
     /// Active modules by name
     modules: HashMap<String, Arc<dyn Module<M>>>,
+
+    /// A handle to the monitor task, if one is running
+    monitor: Option<JoinHandle<()>>,
 }
 
 impl<M: MessageBounds> Process<M> {
@@ -98,11 +101,23 @@ impl<M: MessageBounds> Process<M> {
             config,
             context,
             modules: HashMap::new(),
+            monitor: None,
         }
     }
 
     /// Run the process
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(mut self) -> Result<()> {
+        self.start().await?;
+
+        // Wait for SIGINT
+        tokio::signal::ctrl_c().await?;
+
+        info!("SIGINT received. Shutting down...");
+
+        self.stop().await
+    }
+
+    pub async fn start(&mut self) -> Result<()> {
         info!("Initialising...");
 
         let mut monitor = None;
@@ -149,7 +164,7 @@ impl<M: MessageBounds> Process<M> {
         info!("Running...");
 
         if let Some(monitor) = monitor {
-            tokio::spawn(monitor.monitor());
+            self.monitor = Some(tokio::spawn(monitor.monitor()));
         }
 
         // Send the startup message if required
@@ -162,12 +177,10 @@ impl<M: MessageBounds> Process<M> {
                 .unwrap_or_else(|e| error!("Failed to publish: {e}"));
         }
 
-        // Wait for SIGTERM
-        let mut sigterm = signal(SignalKind::terminate()).expect("Can't set signal");
-        sigterm.recv().await;
+        Ok(())
+    }
 
-        info!("SIGTERM received. Shutting down...");
-
+    pub async fn stop(self) -> Result<()> {
         // Shutdown the message bus and all subscriptions (before losing modules)
         let _ = self.context.message_bus.shutdown().await;
 
