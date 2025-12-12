@@ -8,8 +8,8 @@ use caryatid_sdk::{Context, MessageBounds, MessageBus, Module, ModuleRegistry};
 use config::Config;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch::Sender;
+use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
 mod in_memory_bus;
@@ -102,7 +102,18 @@ impl<M: MessageBounds> Process<M> {
     }
 
     /// Run the process
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(self) -> Result<()> {
+        let process = self.start().await?;
+
+        // Wait for SIGINT
+        tokio::signal::ctrl_c().await?;
+
+        info!("SIGINT received. Shutting down...");
+
+        process.stop().await
+    }
+
+    pub async fn start(self) -> Result<RunningProcess<M>> {
         info!("Initialising...");
 
         let mut monitor = None;
@@ -148,9 +159,7 @@ impl<M: MessageBounds> Process<M> {
 
         info!("Running...");
 
-        if let Some(monitor) = monitor {
-            tokio::spawn(monitor.monitor());
-        }
+        let monitor_task = monitor.map(|m| tokio::spawn(m.monitor()));
 
         // Send the startup message if required
         let _ = self.context.startup_watch.send(true);
@@ -162,16 +171,10 @@ impl<M: MessageBounds> Process<M> {
                 .unwrap_or_else(|e| error!("Failed to publish: {e}"));
         }
 
-        // Wait for SIGTERM
-        let mut sigterm = signal(SignalKind::terminate()).expect("Can't set signal");
-        sigterm.recv().await;
-
-        info!("SIGTERM received. Shutting down...");
-
-        // Shutdown the message bus and all subscriptions (before losing modules)
-        let _ = self.context.message_bus.shutdown().await;
-
-        Ok(())
+        Ok(RunningProcess {
+            context: self.context,
+            monitor: monitor_task,
+        })
     }
 }
 
@@ -181,5 +184,27 @@ impl<M: MessageBounds> ModuleRegistry<M> for Process<M> {
     fn register(&mut self, module: Arc<dyn Module<M>>) {
         let name = module.get_name();
         self.modules.insert(name.to_string(), module.clone());
+    }
+}
+
+pub struct RunningProcess<M: MessageBounds> {
+    /// Global context
+    context: GlobalContext<M>,
+
+    /// A handle to the monitor task, if one is running
+    monitor: Option<JoinHandle<()>>,
+}
+
+impl<M: MessageBounds> RunningProcess<M> {
+    /// Gracefully stop the process.
+    pub async fn stop(self) -> Result<()> {
+        // Shutdown the message bus and all subscriptions (before losing modules)
+        let _ = self.context.message_bus.shutdown().await;
+
+        if let Some(monitor) = self.monitor {
+            monitor.abort();
+        }
+
+        Ok(())
     }
 }
