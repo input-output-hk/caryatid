@@ -41,10 +41,10 @@ impl<M: MessageBounds> Process<M> {
     async fn create_bus(id: String, class: String, config: &Config) -> Result<BusInfo<M>> {
         let bus: Arc<dyn MessageBus<M>> = match class.as_str() {
             // In-memory
-            "in-memory" => Arc::new(InMemoryBus::<M>::new(&config)),
+            "in-memory" => Arc::new(InMemoryBus::<M>::new(config)),
 
             // RabbitMQ
-            "rabbit-mq" => match RabbitMQBus::<M>::new(&config).await {
+            "rabbit-mq" => match RabbitMQBus::<M>::new(config).await {
                 Ok(mqb) => Arc::new(mqb),
                 Err(e) => {
                     error!("Failed to create RabbitMQ bus: {e}");
@@ -74,11 +74,8 @@ impl<M: MessageBounds> Process<M> {
                     if let Ok(class) = mbc.get_string("class") {
                         info!("Creating message bus '{id}' ({class})");
 
-                        match Self::create_bus(id, class, &mbc).await {
-                            Ok(bus) => {
-                                buses.push(Arc::new(bus));
-                            }
-                            _ => {}
+                        if let Ok(bus) = Self::create_bus(id, class, &mbc).await {
+                            buses.push(Arc::new(bus));
                         }
                     }
                 }

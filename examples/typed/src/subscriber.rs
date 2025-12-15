@@ -35,7 +35,7 @@ impl Subscriber {
                     Message::None(_) => error!("Received empty message!"),
                     Message::Test(test) => info!("Received test: {} {}", test.data, test.number),
                     Message::String(s) => info!("Received string {s}"),
-                    Message::JSON(json) => info!("Received JSON {:?}", json),
+                    Message::Json(json) => info!("Received JSON {:?}", json),
                     _ => error!("Unexpected message type"),
                 }
             }

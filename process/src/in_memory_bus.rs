@@ -20,7 +20,7 @@ struct InMemorySubscription<M> {
 impl<M: MessageBounds> SubscriptionBounds for InMemorySubscription<M> {}
 
 impl<M: MessageBounds> Subscription<M> for InMemorySubscription<M> {
-    fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
+    fn read(&mut self) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>> {
         Box::pin(async move {
             loop {
                 if let Some(entry) = self.receiver.recv().await {
@@ -137,7 +137,6 @@ mod tests {
     use tokio::sync::Notify;
     use tokio::time::{timeout, Duration};
     use tracing::Level;
-    use tracing_subscriber;
 
     // Helper to set up an in-memory bus from given config string
     struct TestSetup<M: MessageBounds> {

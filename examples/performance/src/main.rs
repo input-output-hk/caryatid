@@ -5,7 +5,6 @@ use caryatid_process::Process;
 use config::{Config, Environment, File};
 use std::sync::Arc;
 use tracing::info;
-use tracing_subscriber;
 
 // Modules in the same crate
 mod subscriber;

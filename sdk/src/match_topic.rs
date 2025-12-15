@@ -26,14 +26,14 @@ fn match_topic_split(mut pattern: Peekable<Split<char>>, mut topic: Peekable<Spl
                 while pattern.peek() == Some("#").as_ref() {
                     pattern.next();
                 }
-                if pattern.peek() == None {
+                if pattern.peek().is_none() {
                     // All the rest
                     return true;
                 }
 
                 // Try to match the next part of the pattern to any
                 // subsequent part of the topic
-                while let Some(_) = topic.peek() {
+                while topic.peek().is_some() {
                     if match_topic_split(pattern.clone(), topic.clone()) {
                         return true;
                     }
@@ -55,7 +55,7 @@ fn match_topic_split(mut pattern: Peekable<Split<char>>, mut topic: Peekable<Spl
     }
 
     // If we reached the end of both the pattern and topic, it's a match
-    topic.peek() == None
+    topic.peek().is_none()
 }
 
 // -- Tests --

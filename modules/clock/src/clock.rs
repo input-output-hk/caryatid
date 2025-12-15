@@ -46,7 +46,7 @@ impl<M: From<ClockTickMessage> + MessageBounds> Clock<M> {
                 // Construct message
                 let message = ClockTickMessage {
                     time: datetime,
-                    number: number,
+                    number,
                 };
 
                 debug!("Clock sending {:?}", message);
@@ -75,7 +75,6 @@ mod tests {
     use tokio::sync::{mpsc, watch::Sender, Notify};
     use tokio::time::{timeout, Duration};
     use tracing::Level;
-    use tracing_subscriber;
 
     // Message type which includes a ClockTickMessage
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

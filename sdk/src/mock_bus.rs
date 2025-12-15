@@ -71,7 +71,7 @@ impl<M: MessageBounds> MockSubscription<M> {
 }
 
 impl<M: MessageBounds> Subscription<M> for MockSubscription<M> {
-    fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
+    fn read(&mut self) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>> {
         Box::pin(async move {
             let Some(entry) = self.receiver.recv().await else {
                 bail!("Sender {} has unexpectedly closed", self.id);
