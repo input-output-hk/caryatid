@@ -29,7 +29,7 @@ struct RabbitMQSubscription<M> {
 impl<M: MessageBounds> SubscriptionBounds for RabbitMQSubscription<M> {}
 
 impl<M: MessageBounds> Subscription<M> for RabbitMQSubscription<M> {
-    fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
+    fn read(&mut self) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>> {
         Box::pin(async move {
             loop {
                 if let Some(delivery) = self.consumer.next().await {

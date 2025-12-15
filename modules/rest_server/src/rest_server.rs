@@ -91,7 +91,7 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M> {
             // Construct topic, turning / to . and remove leading and trailing /
             let method_lower = method.to_lowercase();
             let dot_path = path.strip_prefix("/").unwrap_or(&path);
-            let dot_path = dot_path.strip_suffix("/").unwrap_or(&dot_path);
+            let dot_path = dot_path.strip_suffix("/").unwrap_or(dot_path);
             let dot_path = dot_path.replace('/', ".");
             let topic = format!("{topic_prefix}.{method_lower}.{dot_path}");
             info!("Sending to topic {}", topic);
@@ -184,7 +184,6 @@ mod tests {
     use tokio::sync::{watch::Sender, Notify};
     use tokio::time::{timeout, Duration};
     use tracing::{debug, Level};
-    use tracing_subscriber;
 
     // Message type which includes a ClockTickMessage
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

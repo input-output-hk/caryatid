@@ -49,7 +49,7 @@ impl Publisher {
                 .expect("Failed to publish message");
 
             // JSON
-            let test_message_3 = Message::JSON(json!({
+            let test_message_3 = Message::Json(json!({
                 "message": "Hello, world!",
             }));
             info!("Sending {:?}", test_message_3);

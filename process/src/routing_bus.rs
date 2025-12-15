@@ -17,12 +17,15 @@ use tracing::{error, info};
 
 const DEFAULT_REQUEST_TIMEOUT: u64 = 5;
 
+type BusMap<M> = Arc<Mutex<BTreeMap<String, Arc<dyn MessageBus<M>>>>>;
+type ReadResult<M> = (anyhow::Result<(String, Arc<M>)>, Box<dyn Subscription<M>>);
+type ReadFuture<'a, M> = BoxFuture<'a, ReadResult<M>>;
+type SubscriptionRead<'a, M> = BoxFuture<'a, anyhow::Result<(String, Arc<M>)>>;
+
 // By creating a function that returns the subscription, we can keep the
 // subscription and corresponding future bound to each other whilst only
 // holding onto a set of futures
-fn read<'a, M: 'a>(
-    mut subscription: Box<dyn Subscription<M>>,
-) -> BoxFuture<'a, (anyhow::Result<(String, Arc<M>)>, Box<dyn Subscription<M>>)> {
+fn read<'a, M: 'a>(mut subscription: Box<dyn Subscription<M>>) -> ReadFuture<'a, M> {
     Box::pin(async move {
         let result = subscription.read().await;
         (result, subscription)
@@ -30,9 +33,7 @@ fn read<'a, M: 'a>(
 }
 
 struct RoutingSubscription<'a, M> {
-    pub reads: FuturesUnordered<
-        BoxFuture<'a, (anyhow::Result<(String, Arc<M>)>, Box<dyn Subscription<M>>)>,
-    >,
+    pub reads: FuturesUnordered<ReadFuture<'a, M>>,
 }
 
 impl<M: MessageBounds> SubscriptionBounds for RoutingSubscription<'_, M> {}
@@ -46,7 +47,7 @@ impl<M> RoutingSubscription<'_, M> {
 }
 
 impl<M: MessageBounds> Subscription<M> for RoutingSubscription<'_, M> {
-    fn read(&mut self) -> BoxFuture<anyhow::Result<(String, Arc<M>)>> {
+    fn read(&mut self) -> SubscriptionRead<'_, M> {
         Box::pin(async move {
             if let Some((result, subscription)) = self.reads.next().await {
                 self.reads.push(read(subscription));
@@ -72,7 +73,7 @@ pub struct BusInfo<M: MessageBounds> {
 /// Routing super-bus
 pub struct RoutingBus<M: MessageBounds> {
     /// Buses
-    buses: Arc<Mutex<BTreeMap<String, Arc<dyn MessageBus<M>>>>>,
+    buses: BusMap<M>,
 
     /// Routes
     routes: Arc<Mutex<Vec<Arc<Route<M>>>>>,
@@ -165,12 +166,12 @@ where
                 .collect()
         };
 
-        for route in matching {
+        if let Some(route) = matching.into_iter().next() {
             for bus in route.buses.iter() {
                 let _ = bus.publish(&topic, message.clone()).await;
             }
-            break; // Stop after match
         }
+
         Ok(())
     }
 
@@ -194,7 +195,7 @@ where
         };
 
         let subscription = RoutingSubscription::new();
-        for route in matching {
+        if let Some(route) = matching.into_iter().next() {
             for bus in route.buses.iter() {
                 match bus.subscribe(&topic).await {
                     Ok(sub) => {
@@ -205,7 +206,6 @@ where
                     }
                 }
             }
-            break; // Stop after match
         }
 
         Ok(Box::new(subscription) as Box<dyn Subscription<M>>)
@@ -229,7 +229,6 @@ mod tests {
     use config::{Config, FileFormat};
     use tokio::time::timeout;
     use tracing::Level;
-    use tracing_subscriber;
 
     // Helper to set up a routing bus with 2 mock sub-buses, from given config string
     struct TestSetup<M: MessageBounds> {
@@ -257,16 +256,16 @@ mod tests {
             let mock_bar = Arc::new(MockBus::<M>::new(&config));
 
             // BusInfo to pass to routing
-            let mut buses: Vec<Arc<BusInfo<M>>> = Vec::new();
-            buses.push(Arc::new(BusInfo {
-                id: "foo".to_string(),
-                bus: mock_foo.clone(),
-            }));
-
-            buses.push(Arc::new(BusInfo {
-                id: "bar".to_string(),
-                bus: mock_bar.clone(),
-            }));
+            let buses: Vec<Arc<BusInfo<M>>> = vec![
+                Arc::new(BusInfo {
+                    id: "foo".to_string(),
+                    bus: mock_foo.clone(),
+                }),
+                Arc::new(BusInfo {
+                    id: "bar".to_string(),
+                    bus: mock_bar.clone(),
+                }),
+            ];
 
             // Create the bus
             let bus = RoutingBus::<M>::new(&config, Arc::new(buses));

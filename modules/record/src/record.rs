@@ -40,15 +40,12 @@ impl<M: MessageBounds + serde::Serialize> Record<M> {
                                     .join(format!("{}.json", num.fetch_add(1, Ordering::SeqCst)));
                                 match File::create(&filename) {
                                     Ok(file) => {
-                                        match serde_json::to_writer(file, &*message) {
-                                            Err(error) => {
-                                                error!(
-                                                    "Failed to record message to file {:?}: {}",
-                                                    &filename, error
-                                                );
-                                            }
-                                            _ => (),
-                                        };
+                                        if let Err(error) = serde_json::to_writer(file, &*message) {
+                                            error!(
+                                                "Failed to record message to file {:?}: {}",
+                                                &filename, error
+                                            );
+                                        }
                                     }
                                     Err(error) => {
                                         error!(

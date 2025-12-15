@@ -17,7 +17,7 @@ use tracing::info;
 )]
 pub struct Publisher;
 
-const DEFAULT_COUNT: i64 = 1000_000;
+const DEFAULT_COUNT: i64 = 1_000_000;
 const DEFAULT_THREADS: i64 = 1;
 const DEFAULT_LENGTH: i64 = 100;
 

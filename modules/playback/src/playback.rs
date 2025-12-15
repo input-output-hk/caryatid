@@ -47,12 +47,11 @@ impl<M: MessageBounds + for<'a> serde::Deserialize<'a>> Playback<M> {
             match read_to_string(&filename) {
                 Ok(file) => {
                     match serde_json::from_str::<Arc<M>>(&file) {
-                        Ok(message) => match context.message_bus.publish(&topic, message).await {
-                            Err(error) => {
+                        Ok(message) => {
+                            if let Err(error) = context.message_bus.publish(&topic, message).await {
                                 error!("Failed to publish message: {}", error);
                             }
-                            _ => (),
-                        },
+                        }
                         Err(error) => {
                             error!(
                                 "Failed to playback message to file {:?}: {}. Aborting playback",
@@ -70,7 +69,7 @@ impl<M: MessageBounds + for<'a> serde::Deserialize<'a>> Playback<M> {
                     break;
                 }
             };
-            num = num + 1;
+            num += 1;
         }
         Ok(())
     }

@@ -14,7 +14,7 @@ pub enum Message {
     Test(Test),              // A custom struct
     String(String),          // Simple string
     Clock(ClockTickMessage), // Clock tick
-    JSON(serde_json::Value), // Get out of jail free card
+    Json(serde_json::Value), // Get out of jail free card
 }
 
 impl Default for Message {

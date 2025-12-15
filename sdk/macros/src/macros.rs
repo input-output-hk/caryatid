@@ -50,7 +50,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     let name = match name {
         Some(n) => n,
         None => {
-            return syn::Error::new_spanned(&struct_name, "Module attribute 'name' is required")
+            return syn::Error::new_spanned(struct_name, "Module attribute 'name' is required")
                 .to_compile_error()
                 .into();
         }
@@ -63,7 +63,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         Some(t) => t,
         None => {
             return syn::Error::new_spanned(
-                &struct_name,
+                struct_name,
                 "Module attribute 'message_type' is required",
             )
             .to_compile_error()
