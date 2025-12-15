@@ -14,6 +14,7 @@ use axum::{
     Router,
 };
 use hyper::body;
+use tower_http::cors::{Any, CorsLayer};
 
 use std::convert::Infallible;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -158,7 +159,12 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M> {
 
             // Create an 'app' - actually we handle all the routing, we just use axum to
             // sugar over hyper
-            let app = Router::new().fallback(handle_request);
+            let app = Router::new().fallback(handle_request).layer(
+                CorsLayer::new()
+                    .allow_origin(Any)
+                    .allow_methods(Any)
+                    .allow_headers(Any),
+            );
 
             // Run it
             axum::Server::bind(&addr)
