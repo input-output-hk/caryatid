@@ -135,7 +135,7 @@ pub struct MonitorConfig {
     pub output: Option<PathBuf>,
 
     /// Topic to publish snapshots on the message bus (optional).
-    /// Requires the message type to implement `From<MonitorSnapshot>`.
+    /// When configured, snapshots are published as JSON via a dedicated RabbitMQ connection.
     #[serde(default)]
     pub topic: Option<String>,
 
@@ -248,9 +248,9 @@ impl Monitor {
 
     /// Run the monitor loop with an optional publisher callback.
     ///
-    /// The publisher is called with the JSON-serialized snapshot bytes
-    /// each time a snapshot is collected. This allows the caller to
-    /// publish to a message bus or any other destination.
+    /// The publisher is called with a `MonitorSnapshot` each time a
+    /// snapshot is collected. This allows the caller to publish to a
+    /// message bus or any other destination.
     ///
     /// # Example
     ///
