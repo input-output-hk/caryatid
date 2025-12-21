@@ -21,7 +21,7 @@ pub use monitor::{
     SerializedWriteStreamState,
 };
 
-mod rabbit_mq_bus;
+pub mod rabbit_mq_bus;
 use rabbit_mq_bus::RabbitMQBus;
 
 mod routing_bus;
@@ -39,7 +39,7 @@ pub struct Process<M: MessageBounds> {
     modules: HashMap<String, Arc<dyn Module<M>>>,
 }
 
-impl<M: MessageBounds + From<MonitorSnapshot>> Process<M> {
+impl<M: MessageBounds> Process<M> {
     /// Create a bus of the given type
     async fn create_bus(id: String, class: String, config: &Config) -> Result<BusInfo<M>> {
         let bus: Arc<dyn MessageBus<M>> = match class.as_str() {
@@ -169,7 +169,13 @@ impl<M: MessageBounds + From<MonitorSnapshot>> Process<M> {
                     Box::new(move |snapshot: MonitorSnapshot| {
                         let bus = bus.clone();
                         let topic = topic.clone();
-                        let msg: M = snapshot.into();
+                        // Serialize snapshot to JSON and deserialize to M
+                        // This avoids requiring M: From<MonitorSnapshot>
+                        let json = serde_json::to_value(&snapshot).unwrap_or_default();
+                        let Ok(msg) = serde_json::from_value::<M>(json) else {
+                            warn!("Failed to convert MonitorSnapshot to message type");
+                            return;
+                        };
                         tokio::spawn(async move {
                             if let Err(e) = bus.publish(&topic, Arc::new(msg)).await {
                                 warn!("Failed to publish monitor snapshot: {e}");
@@ -200,7 +206,7 @@ impl<M: MessageBounds + From<MonitorSnapshot>> Process<M> {
 }
 
 /// Module registry implementation
-impl<M: MessageBounds + From<MonitorSnapshot>> ModuleRegistry<M> for Process<M> {
+impl<M: MessageBounds> ModuleRegistry<M> for Process<M> {
     /// Register a module
     fn register(&mut self, module: Arc<dyn Module<M>>) {
         let name = module.get_name();
