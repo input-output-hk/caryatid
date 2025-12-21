@@ -117,7 +117,7 @@ const fn default_frequency() -> f64 {
 /// Publish to message bus topic:
 /// ```toml
 /// [monitor]
-/// topic = "caryatid.monitor"
+/// topic = "caryatid.monitor.snapshot"
 /// frequency_secs = 1.0
 /// ```
 ///
@@ -125,7 +125,7 @@ const fn default_frequency() -> f64 {
 /// ```toml
 /// [monitor]
 /// output = "monitor.json"
-/// topic = "caryatid.monitor"
+/// topic = "caryatid.monitor.snapshot"
 /// frequency_secs = 5.0
 /// ```
 #[derive(Deserialize)]
