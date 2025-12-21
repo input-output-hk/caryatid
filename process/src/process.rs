@@ -16,7 +16,10 @@ mod in_memory_bus;
 use in_memory_bus::InMemoryBus;
 
 mod monitor;
-use monitor::{Monitor, MonitorConfig};
+pub use monitor::{
+    Monitor, MonitorConfig, MonitorSnapshot, SerializedModuleState, SerializedReadStreamState,
+    SerializedWriteStreamState,
+};
 
 mod rabbit_mq_bus;
 use rabbit_mq_bus::RabbitMQBus;
