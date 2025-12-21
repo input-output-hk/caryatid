@@ -39,7 +39,7 @@ pub struct Process<M: MessageBounds> {
     modules: HashMap<String, Arc<dyn Module<M>>>,
 }
 
-impl<M: MessageBounds> Process<M> {
+impl<M: MessageBounds + From<MonitorSnapshot>> Process<M> {
     /// Create a bus of the given type
     async fn create_bus(id: String, class: String, config: &Config) -> Result<BusInfo<M>> {
         let bus: Arc<dyn MessageBus<M>> = match class.as_str() {
@@ -159,7 +159,28 @@ impl<M: MessageBounds> Process<M> {
 
         info!("Running...");
 
-        let monitor_task = monitor.map(|m| tokio::spawn(m.monitor()));
+        // Start the monitor, with optional topic publishing
+        let monitor_task = match monitor {
+            Some(m) => {
+                let publisher = m.topic().map(|topic| {
+                    let bus = self.context.message_bus.clone();
+                    let topic = topic.to_string();
+                    info!("Monitor publishing to topic: {topic}");
+                    Box::new(move |snapshot: MonitorSnapshot| {
+                        let bus = bus.clone();
+                        let topic = topic.clone();
+                        let msg: M = snapshot.into();
+                        tokio::spawn(async move {
+                            if let Err(e) = bus.publish(&topic, Arc::new(msg)).await {
+                                warn!("Failed to publish monitor snapshot: {e}");
+                            }
+                        });
+                    }) as monitor::SnapshotPublisher
+                });
+                Some(tokio::spawn(m.monitor_with_publisher(publisher)))
+            }
+            None => None,
+        };
 
         // Send the startup message if required
         let _ = self.context.startup_watch.send(true);
@@ -179,7 +200,7 @@ impl<M: MessageBounds> Process<M> {
 }
 
 /// Module registry implementation
-impl<M: MessageBounds> ModuleRegistry<M> for Process<M> {
+impl<M: MessageBounds + From<MonitorSnapshot>> ModuleRegistry<M> for Process<M> {
     /// Register a module
     fn register(&mut self, module: Arc<dyn Module<M>>) {
         let name = module.get_name();

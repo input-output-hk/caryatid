@@ -7,6 +7,7 @@ pub enum Message {
     None(()),                   // Just so we have a simple default
     RESTRequest(RESTRequest),   // REST request
     RESTResponse(RESTResponse), // REST response
+    Json(serde_json::Value),    // For monitor snapshots
 }
 
 impl Default for Message {
@@ -36,5 +37,11 @@ impl GetRESTResponse for Message {
         } else {
             None
         }
+    }
+}
+
+impl From<caryatid_process::MonitorSnapshot> for Message {
+    fn from(snapshot: caryatid_process::MonitorSnapshot) -> Self {
+        Message::Json(serde_json::to_value(snapshot).unwrap())
     }
 }
