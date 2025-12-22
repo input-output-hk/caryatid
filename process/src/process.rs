@@ -2,6 +2,7 @@
 //! Loads and runs modules built with caryatid-sdk
 
 use anyhow::{anyhow, Result};
+use buswatch_types::Snapshot;
 use caryatid_sdk::config::{build_module_config, config_from_value, get_sub_config};
 use caryatid_sdk::context::GlobalContext;
 use caryatid_sdk::{Context, MessageBounds, MessageBus, Module, ModuleRegistry};
@@ -16,10 +17,7 @@ mod in_memory_bus;
 use in_memory_bus::InMemoryBus;
 
 mod monitor;
-pub use monitor::{
-    Monitor, MonitorConfig, MonitorSnapshot, SerializedModuleState, SerializedReadStreamState,
-    SerializedWriteStreamState,
-};
+pub use monitor::{Monitor, MonitorConfig};
 
 pub mod rabbit_mq_bus;
 use rabbit_mq_bus::RabbitMQBus;
@@ -210,11 +208,11 @@ impl<M: MessageBounds> Process<M> {
                         let bus = bus.clone();
                         let topic = topic.to_string();
                         info!("Monitor publishing to topic: {topic}");
-                        Some(Box::new(move |snapshot: MonitorSnapshot| {
+                        Some(Box::new(move |snapshot: Snapshot| {
                             let bus = bus.clone();
                             let topic = topic.clone();
                             // Convert snapshot to JSON value directly
-                            let msg: serde_json::Value = snapshot.into();
+                            let msg: serde_json::Value = serde_json::to_value(&snapshot).expect("snapshot serializable");
                             tokio::spawn(async move {
                                 if let Err(e) = bus.publish(&topic, Arc::new(msg)).await {
                                     warn!("Failed to publish monitor snapshot: {e}");
