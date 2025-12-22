@@ -193,7 +193,7 @@ impl Monitor {
     /// The publisher is called with a `Snapshot` each time a
     /// snapshot is collected. This allows the caller to publish to a
     /// message bus or any other destination.
-    pub async fn monitor_with_publisher(self, publisher: Option<SnapshotPublisher>) {
+    pub async fn monitor(self, publisher: Option<SnapshotPublisher>) {
         loop {
             time::sleep(self.write_frequency).await;
             let snapshot = self.collect_snapshot();

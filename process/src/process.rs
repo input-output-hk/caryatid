@@ -37,8 +37,8 @@ pub struct Process<M: MessageBounds> {
     modules: HashMap<String, Arc<dyn Module<M>>>,
 
     /// RabbitMQ bus for monitor publishing (if configured)
-    /// Uses serde_json::Value so it doesn't depend on M
-    monitor_bus: Option<Arc<RabbitMQBus<serde_json::Value>>>,
+    /// Uses Snapshot directly so it doesn't depend on M
+    monitor_bus: Option<Arc<RabbitMQBus<Snapshot>>>,
 }
 
 impl<M: MessageBounds> Process<M> {
@@ -119,7 +119,7 @@ impl<M: MessageBounds> Process<M> {
             .is_some()
         {
             if let Some(rabbitmq_config) = Self::find_rabbitmq_config(&config) {
-                match RabbitMQBus::<serde_json::Value>::new(&rabbitmq_config).await {
+                match RabbitMQBus::<Snapshot>::new(&rabbitmq_config).await {
                     Ok(bus) => Some(Arc::new(bus)),
                     Err(e) => {
                         warn!("Failed to create monitor RabbitMQ bus: {e}");
@@ -211,10 +211,10 @@ impl<M: MessageBounds> Process<M> {
                         Some(Box::new(move |snapshot: Snapshot| {
                             let bus = bus.clone();
                             let topic = topic.clone();
-                            // Convert snapshot to JSON value directly
-                            let msg: serde_json::Value = serde_json::to_value(&snapshot).expect("snapshot serializable");
+                            // Publish snapshot directly (serialized to CBOR by the bus)
+
                             tokio::spawn(async move {
-                                if let Err(e) = bus.publish(&topic, Arc::new(msg)).await {
+                                if let Err(e) = bus.publish(&topic, Arc::new(snapshot)).await {
                                     warn!("Failed to publish monitor snapshot: {e}");
                                 }
                             });
@@ -222,7 +222,7 @@ impl<M: MessageBounds> Process<M> {
                     }
                     _ => None,
                 };
-                Some(tokio::spawn(m.monitor_with_publisher(publisher)))
+                Some(tokio::spawn(m.monitor(publisher)))
             }
             None => None,
         };
@@ -262,7 +262,7 @@ pub struct RunningProcess<M: MessageBounds> {
     monitor: Option<JoinHandle<()>>,
 
     /// RabbitMQ bus for monitor (kept alive for the process lifetime)
-    monitor_bus: Option<Arc<RabbitMQBus<serde_json::Value>>>,
+    monitor_bus: Option<Arc<RabbitMQBus<Snapshot>>>,
 }
 
 impl<M: MessageBounds> RunningProcess<M> {
