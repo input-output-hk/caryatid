@@ -188,12 +188,6 @@ impl Monitor {
         }
     }
 
-    /// Run the monitor loop, writing to file only.
-    /// This maintains backward compatibility with existing usage.
-    pub async fn monitor(self) {
-        self.monitor_with_publisher(None).await
-    }
-
     /// Run the monitor loop with an optional publisher callback.
     ///
     /// The publisher is called with a `Snapshot` each time a

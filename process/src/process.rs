@@ -17,9 +17,9 @@ mod in_memory_bus;
 use in_memory_bus::InMemoryBus;
 
 mod monitor;
-pub use monitor::{Monitor, MonitorConfig};
+use monitor::{Monitor, MonitorConfig};
 
-pub mod rabbit_mq_bus;
+mod rabbit_mq_bus;
 use rabbit_mq_bus::RabbitMQBus;
 
 mod routing_bus;
