@@ -101,3 +101,4 @@ The code is structured as follows:
   * [`examples/rest`](./examples/rest): A modular REST server
   * [`examples/performance`](./examples/performance): Performance testing
   * [`examples/haskell`](./examples/haskell): Haskell interop demonstration
+* [`spec-kit-performance`](./spec-kit-performance): Spec-Kit project for comprehensive performance testing (see [SPEC_KIT_PERFORMANCE.md](./examples/SPEC_KIT_PERFORMANCE.md))

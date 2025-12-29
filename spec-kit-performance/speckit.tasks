@@ -1,0 +1,459 @@
+# Caryatid Performance Test Suite - Implementation Tasks
+
+This task list breaks down the implementation plan into actionable steps. Tasks are organized by phase and should be completed in order within each phase, though phases can overlap.
+
+## Phase 1: Core Infrastructure (Foundation)
+
+### Task 1.1: Create Project Structure
+**Priority**: P0 (Critical)  
+**Effort**: 30 minutes  
+**Dependencies**: None
+
+Create the directory structure for the performance suite:
+- [ ] Create `examples/performance-suite/` directory
+- [ ] Create `examples/performance-suite/src/` directory
+- [ ] Create `examples/performance-suite/scenarios/` directory
+- [ ] Create `examples/performance-suite/baselines/` directory
+
+### Task 1.2: Setup Cargo.toml
+**Priority**: P0 (Critical)  
+**Effort**: 20 minutes  
+**Dependencies**: Task 1.1
+
+Create and configure Cargo.toml with all dependencies:
+- [ ] Create `examples/performance-suite/Cargo.toml`
+- [ ] Add caryatid_process and caryatid_sdk path dependencies
+- [ ] Add tokio, tracing, tracing-subscriber, serde, serde_json, arcstr
+- [ ] Add hdrhistogram for latency percentiles
+- [ ] Add sysinfo for system resource monitoring
+- [ ] Add prettytable-rs for console output
+- [ ] Add chrono for timestamps
+- [ ] Add config crate for TOML configuration
+- [ ] Add anyhow for error handling
+- [ ] Set rust edition = "2021"
+
+### Task 1.3: Implement Message Types
+**Priority**: P0 (Critical)  
+**Effort**: 1 hour  
+**Dependencies**: Task 1.2
+
+Create `src/message.rs` with performance test message types:
+- [ ] Define `PerfMessage` enum with:
+  - `StartTest { scenario_id: String, timestamp: Instant }`
+  - `StopTest { scenario_id: String }`
+  - `PerfData { sequence: u64, timestamp: i64, payload: Vec<u8>, scenario_id: String }`
+  - `Metrics { scenario_id: String, metrics: PerformanceMetrics }`
+- [ ] Implement Serialize/Deserialize for PerfMessage
+- [ ] Define `PerformanceMetrics` struct with all required fields
+- [ ] Add helper methods for message creation
+- [ ] Add documentation comments
+
+### Task 1.4: Implement Configuration Structures
+**Priority**: P0 (Critical)  
+**Effort**: 1.5 hours  
+**Dependencies**: Task 1.2
+
+Create `src/config.rs` with configuration types:
+- [ ] Define `ScenarioConfig` struct (name, description, warmup_secs, test_duration_secs, cooldown_secs)
+- [ ] Define `PublisherConfig` struct (topic, message_count, message_size, concurrent_tasks, rate_limit)
+- [ ] Define `SubscriberConfig` struct (topic, concurrent_tasks, rate_limit)
+- [ ] Define `CoordinatorConfig` struct (output_dir, output_formats)
+- [ ] Define `OutputFormat` enum (Console, Json, Csv, Markdown)
+- [ ] Implement Deserialize for all config types
+- [ ] Add validation methods for configs
+- [ ] Add documentation
+
+### Task 1.5: Implement MetricsCollector
+**Priority**: P0 (Critical)  
+**Effort**: 2 hours  
+**Dependencies**: Task 1.2, Task 1.3
+
+Create `src/metrics.rs` with metrics collection:
+- [ ] Define `MetricsCollector` struct with HDR histogram fields
+- [ ] Implement `new()` constructor with appropriate histogram configuration
+- [ ] Implement `record_latency(&mut self, nanos: u64)` method
+- [ ] Implement `record_queue_depth(&mut self, depth: u64)` method
+- [ ] Implement `percentile(&self, p: f64) -> u64` method
+- [ ] Implement system monitoring with sysinfo crate
+- [ ] Implement `finalize(&mut self) -> PerformanceMetrics` method
+- [ ] Calculate mean, stddev, min, max from histogram
+- [ ] Add unit tests for percentile calculations
+- [ ] Add documentation
+
+### Task 1.6: Implement Basic Console Reporter
+**Priority**: P0 (Critical)  
+**Effort**: 1.5 hours  
+**Dependencies**: Task 1.3, Task 1.5
+
+Create `src/reporter.rs` with console output:
+- [ ] Define `Reporter` trait with `report()` method
+- [ ] Implement `ConsoleReporter` struct
+- [ ] Format throughput with thousands separators
+- [ ] Format latency table with p50, p90, p95, p99, p99.9
+- [ ] Format queue depth table
+- [ ] Display resource usage (CPU %, memory MB)
+- [ ] Use prettytable-rs for nice formatting
+- [ ] Add colored output for pass/fail indicators
+- [ ] Add documentation
+
+## Phase 2: Publisher and Subscriber Modules
+
+### Task 2.1: Implement Performance Publisher Module
+**Priority**: P0 (Critical)  
+**Effort**: 2.5 hours  
+**Dependencies**: Task 1.3, Task 1.4
+
+Create `src/publisher_perf.rs`:
+- [ ] Define `PublisherPerf` struct
+- [ ] Implement caryatid_sdk::module macro
+- [ ] Implement `init()` method that reads PublisherConfig
+- [ ] Create message generation logic with configurable payload size
+- [ ] Implement precise timestamp injection (nanos since epoch)
+- [ ] Add sequence number tracking
+- [ ] Implement optional rate limiting with tokio::time::sleep
+- [ ] Implement concurrent task spawning (tokio::spawn)
+- [ ] Handle StartTest signal to begin publishing
+- [ ] Handle StopTest signal to cease publishing
+- [ ] Add tracing for debugging
+- [ ] Add error handling
+
+### Task 2.2: Implement Performance Subscriber Module
+**Priority**: P0 (Critical)  
+**Effort**: 3 hours  
+**Dependencies**: Task 1.3, Task 1.4, Task 1.5
+
+Create `src/subscriber_perf.rs`:
+- [ ] Define `SubscriberPerf` struct with MetricsCollector
+- [ ] Implement caryatid_sdk::module macro
+- [ ] Implement `init()` method that reads SubscriberConfig
+- [ ] Subscribe to configured topic
+- [ ] Calculate latency on message receipt (current time - message timestamp)
+- [ ] Record latency in MetricsCollector histogram
+- [ ] Calculate queue depth (sequence gap detection)
+- [ ] Record queue depth in histogram
+- [ ] Track first/last message timestamps
+- [ ] Implement optional rate limiting for slow consumer simulation
+- [ ] On StopTest signal, finalize metrics and publish Metrics message
+- [ ] Add system resource monitoring during test
+- [ ] Add tracing for debugging
+- [ ] Add error handling
+
+### Task 2.3: Test Basic Pub/Sub Flow
+**Priority**: P1 (High)  
+**Effort**: 1 hour  
+**Dependencies**: Task 2.1, Task 2.2
+
+Create basic integration test:
+- [ ] Create simple test harness
+- [ ] Test publisher sends messages with timestamps
+- [ ] Test subscriber receives and calculates latency
+- [ ] Verify histogram percentile calculations
+- [ ] Test rate limiting on both publisher and subscriber
+- [ ] Verify message ordering and sequence tracking
+- [ ] Test queue depth calculation
+
+## Phase 3: Coordinator and Orchestration
+
+### Task 3.1: Implement Coordinator Module
+**Priority**: P0 (Critical)  
+**Effort**: 3 hours  
+**Dependencies**: Task 1.3, Task 1.4, Task 2.1, Task 2.2
+
+Create `src/coordinator.rs`:
+- [ ] Define `Coordinator` struct
+- [ ] Implement caryatid_sdk::module macro
+- [ ] Implement `init()` method that reads CoordinatorConfig and ScenarioConfig
+- [ ] Implement warmup phase (send StartTest, wait warmup_secs)
+- [ ] Implement test phase (wait test_duration_secs)
+- [ ] Implement cooldown phase (send StopTest, wait cooldown_secs)
+- [ ] Subscribe to Metrics messages from subscribers
+- [ ] Collect and aggregate metrics from multiple subscribers
+- [ ] Handle test lifecycle state machine
+- [ ] Add error handling for incomplete tests
+- [ ] Add tracing for test progress
+- [ ] Add documentation
+
+### Task 3.2: Implement Metrics Aggregation
+**Priority**: P1 (High)  
+**Effort**: 1.5 hours  
+**Dependencies**: Task 3.1
+
+Extend coordinator with aggregation logic:
+- [ ] Implement logic to wait for all subscriber metrics
+- [ ] Aggregate throughput across multiple subscribers
+- [ ] Merge latency histograms from multiple subscribers
+- [ ] Merge queue depth histograms
+- [ ] Calculate overall test statistics
+- [ ] Handle missing or late metrics with timeout
+- [ ] Add validation of aggregated results
+
+### Task 3.3: Integrate Reporter with Coordinator
+**Priority**: P1 (High)  
+**Effort**: 1 hour  
+**Dependencies**: Task 1.6, Task 3.1, Task 3.2
+
+Connect coordinator to reporter:
+- [ ] Invoke ConsoleReporter after metrics aggregation
+- [ ] Pass aggregated PerformanceMetrics to reporter
+- [ ] Add scenario name and configuration to output
+- [ ] Display test start/end timestamps
+- [ ] Add summary statistics
+
+## Phase 4: Reporting and Analysis
+
+### Task 4.1: Implement JSON Reporter
+**Priority**: P1 (High)  
+**Effort**: 1.5 hours  
+**Dependencies**: Task 1.6, Task 3.2
+
+Extend reporter with JSON output:
+- [ ] Implement `JsonReporter` struct
+- [ ] Create JSON schema for performance results
+- [ ] Serialize PerformanceMetrics to JSON
+- [ ] Include all histogram percentiles in output
+- [ ] Add test configuration metadata to JSON
+- [ ] Write JSON to configured output directory
+- [ ] Use pretty-printing for readability
+- [ ] Add timestamp and version info
+- [ ] Validate JSON schema
+
+### Task 4.2: Implement CSV Reporter
+**Priority**: P2 (Medium)  
+**Effort**: 1 hour  
+**Dependencies**: Task 1.6, Task 3.2
+
+Add CSV export functionality:
+- [ ] Implement `CsvReporter` struct
+- [ ] Define CSV columns (scenario, timestamp, throughput, latency_p50, etc.)
+- [ ] Write header row
+- [ ] Write data rows with comma-separated values
+- [ ] Handle CSV escaping for string fields
+- [ ] Write CSV to configured output directory
+- [ ] Support appending to existing CSV for multiple runs
+
+### Task 4.3: Implement Markdown Reporter
+**Priority**: P2 (Medium)  
+**Effort**: 1.5 hours  
+**Dependencies**: Task 1.6, Task 3.2
+
+Add Markdown report generation:
+- [ ] Implement `MarkdownReporter` struct
+- [ ] Generate formatted Markdown with headers
+- [ ] Create tables for latency and queue depth percentiles
+- [ ] Add code blocks for configuration
+- [ ] Include ASCII charts for visual representation
+- [ ] Add recommendations based on results
+- [ ] Write Markdown to configured output directory
+- [ ] Make report suitable for documentation/publishing
+
+### Task 4.4: Implement Baseline Comparison
+**Priority**: P1 (High)  
+**Effort**: 2 hours  
+**Dependencies**: Task 4.1
+
+Add regression detection:
+- [ ] Define baseline JSON schema
+- [ ] Implement baseline loading from file
+- [ ] Compare current results against baseline
+- [ ] Calculate percentage differences for key metrics
+- [ ] Implement configurable regression thresholds
+- [ ] Return exit code 0 for pass, 1 for regression
+- [ ] Add comparison section to all report formats
+- [ ] Highlight regressions in console output
+- [ ] Add documentation for baseline management
+
+## Phase 5: Scenarios and Documentation
+
+### Task 5.1: Create Scenario Configuration Files
+**Priority**: P1 (High)  
+**Effort**: 2 hours  
+**Dependencies**: Task 1.4
+
+Create pre-configured scenario TOML files:
+- [ ] Create `scenarios/simple.toml` (1 publisher, 1 subscriber, 10k messages)
+- [ ] Create `scenarios/multi_publisher.toml` (4 publishers, 1 subscriber)
+- [ ] Create `scenarios/multi_subscriber.toml` (1 publisher, 4 subscribers)
+- [ ] Create `scenarios/high_throughput.toml` (unlimited rate, small messages)
+- [ ] Create `scenarios/large_messages.toml` (10KB messages)
+- [ ] Create `scenarios/slow_consumer.toml` (rate-limited subscriber)
+- [ ] Add comments explaining each scenario's purpose
+- [ ] Test each scenario configuration
+
+### Task 5.2: Implement Main Entry Point
+**Priority**: P0 (Critical)  
+**Effort**: 2 hours  
+**Dependencies**: Task 2.1, Task 2.2, Task 3.1
+
+Create `src/main.rs`:
+- [ ] Implement tokio::main async entry point
+- [ ] Initialize tracing subscriber
+- [ ] Parse command-line arguments (--scenario, --config, --baseline)
+- [ ] Load configuration from TOML file
+- [ ] Create Caryatid Process with PerfMessage type
+- [ ] Register Coordinator module
+- [ ] Register PublisherPerf module(s)
+- [ ] Register SubscriberPerf module(s)
+- [ ] Configure message router (internal/external bus)
+- [ ] Run process
+- [ ] Handle errors and exit codes
+- [ ] Add usage help text
+
+### Task 5.3: Create Default Configuration
+**Priority**: P1 (High)  
+**Effort**: 1 hour  
+**Dependencies**: Task 1.4
+
+Create `performance-suite.toml`:
+- [ ] Add coordinator configuration
+- [ ] Add default scenario configuration
+- [ ] Add module configurations for publisher and subscriber
+- [ ] Add message router configuration
+- [ ] Add message bus configurations (internal and external)
+- [ ] Add helpful comments for each section
+- [ ] Test default configuration works
+
+### Task 5.4: Write Comprehensive README
+**Priority**: P1 (High)  
+**Effort**: 2 hours  
+**Dependencies**: All previous tasks
+
+Create `examples/performance-suite/README.md`:
+- [ ] Overview of performance suite
+- [ ] Installation/prerequisites
+- [ ] Quick start guide
+- [ ] Configuration options reference
+- [ ] Scenario descriptions
+- [ ] Command-line usage examples
+- [ ] Interpreting results
+- [ ] Baseline management guide
+- [ ] CI/CD integration guide
+- [ ] Troubleshooting section
+- [ ] Performance tuning tips
+- [ ] Contributing guidelines
+
+### Task 5.5: Create Initial Baseline
+**Priority**: P2 (Medium)  
+**Effort**: 30 minutes  
+**Dependencies**: Task 5.4
+
+Generate baseline measurements:
+- [ ] Run all scenarios on reference hardware
+- [ ] Capture JSON output
+- [ ] Create `baselines/baseline_v1.json`
+- [ ] Document hardware specifications
+- [ ] Add baseline version metadata
+- [ ] Commit baseline to repository
+
+## Phase 6: Validation and Optimization
+
+### Task 6.1: Run Full Test Suite
+**Priority**: P0 (Critical)  
+**Effort**: 1 hour  
+**Dependencies**: All Phase 5 tasks
+
+Validate complete implementation:
+- [ ] Run all 6 scenarios in sequence
+- [ ] Verify each completes successfully
+- [ ] Check total runtime is < 10 minutes
+- [ ] Verify all output formats are generated
+- [ ] Check console output is readable
+- [ ] Validate JSON schema
+- [ ] Verify CSV can be imported to spreadsheet
+- [ ] Review Markdown reports
+
+### Task 6.2: Verify Reproducibility
+**Priority**: P1 (High)  
+**Effort**: 2 hours  
+**Dependencies**: Task 6.1
+
+Test result consistency:
+- [ ] Run same scenario 10 times
+- [ ] Calculate variance for each metric
+- [ ] Verify variance is < 5% for throughput
+- [ ] Verify variance is < 5% for latency percentiles
+- [ ] Document any high-variance scenarios
+- [ ] Tune warmup period if needed
+- [ ] Add notes about factors affecting variance
+
+### Task 6.3: Measure and Optimize Overhead
+**Priority**: P1 (High)  
+**Effort**: 2 hours  
+**Dependencies**: Task 6.1
+
+Validate measurement overhead:
+- [ ] Compare against existing `examples/performance` test
+- [ ] Measure overhead of timestamp recording
+- [ ] Measure overhead of histogram updates
+- [ ] Verify overhead is < 5%
+- [ ] Optimize hot paths if needed
+- [ ] Document measurement methodology
+- [ ] Add overhead notes to README
+
+### Task 6.4: Test Bus Configurations
+**Priority**: P1 (High)  
+**Effort**: 1 hour  
+**Dependencies**: Task 6.1
+
+Validate different bus types:
+- [ ] Test in-memory bus configuration
+- [ ] Test external RabbitMQ bus (if available)
+- [ ] Test mixed routing scenarios
+- [ ] Document performance differences
+- [ ] Add troubleshooting for RabbitMQ setup
+- [ ] Create scenario variations for each bus type
+
+### Task 6.5: Create CI/CD Integration Guide
+**Priority**: P2 (Medium)  
+**Effort**: 1.5 hours  
+**Dependencies**: Task 4.4, Task 6.1
+
+Document automation:
+- [ ] Write GitHub Actions workflow example
+- [ ] Document baseline storage strategy
+- [ ] Explain regression threshold configuration
+- [ ] Document artifact upload for results
+- [ ] Add example for failing on regression
+- [ ] Document performance test scheduling
+- [ ] Add example for comparing PR performance
+
+### Task 6.6: Final Code Review and Cleanup
+**Priority**: P1 (High)  
+**Effort**: 1 hour  
+**Dependencies**: All previous tasks
+
+Polish implementation:
+- [ ] Run `cargo fmt` on all files
+- [ ] Run `cargo clippy` and fix all warnings
+- [ ] Review all error messages for clarity
+- [ ] Check all documentation comments
+- [ ] Remove any debug logging
+- [ ] Verify all TODOs are addressed
+- [ ] Run final test suite
+- [ ] Update top-level Caryatid README to reference performance suite
+
+## Summary
+
+**Total Estimated Effort**: ~40 hours  
+**Critical Path**: Phase 1 → Phase 2 → Phase 3 → Phase 5.2 → Phase 6.1  
+**Minimum Viable Product**: Tasks marked P0 (Critical)  
+**Optional Enhancements**: Tasks marked P2 (Medium)
+
+## Task Status Legend
+- [ ] Not started
+- [→] In progress
+- [✓] Completed
+- [✗] Blocked
+
+## Dependencies Graph
+```
+Phase 1 (Infrastructure)
+    ↓
+Phase 2 (Modules) ← Can start once Phase 1 complete
+    ↓
+Phase 3 (Coordinator) ← Can start once Phase 2 complete
+    ↓
+Phase 4 (Reporting) ← Can run in parallel with Phase 5
+Phase 5 (Scenarios & Docs) ← Can run in parallel with Phase 4
+    ↓
+Phase 6 (Validation) ← Requires all previous phases
+```

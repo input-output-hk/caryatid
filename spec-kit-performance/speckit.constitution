@@ -1,0 +1,59 @@
+# Caryatid Performance Test Constitution
+
+## Project Principles
+
+### 1. Performance First
+- All performance tests must provide accurate, reproducible metrics
+- Tests must measure real-world scenarios, not artificial benchmarks
+- Performance degradation must be detectable and measurable
+
+### 2. Framework Integration
+- Tests must integrate seamlessly with the existing Caryatid framework
+- Reuse existing modules and patterns where possible
+- Follow the pub/sub message-passing architecture
+
+### 3. Observability
+- All tests must provide clear, actionable metrics
+- Include throughput (messages/sec), latency (avg/p50/p95/p99), and resource usage
+- Provide statistical significance indicators
+
+### 4. Flexibility
+- Support testing both in-memory and external bus configurations
+- Allow parameterization of test scenarios (message size, thread count, duration)
+- Enable comparison across different configurations
+
+## Development Standards
+
+### Code Quality
+- Maintain consistency with existing Caryatid code style
+- Use Rust best practices (error handling, async/await, type safety)
+- Document all configuration options
+- Code must pass clippy checks
+- Code should be formatted with rust-analyzer
+
+### Testing Strategy
+- Performance tests should be runnable in CI/CD environments
+- Provide both quick smoke tests and comprehensive performance suites
+- Include baseline measurements for regression detection
+
+### Configuration Management
+- Use TOML configuration files following Caryatid patterns
+- Support environment variable overrides
+- Provide sensible defaults
+
+## Constraints
+
+### Technical Requirements
+- Rust 2021 edition
+- Must use Tokio async runtime (matching Caryatid)
+- Compatible with existing message bus abstractions
+
+### Resource Considerations
+- Tests should complete in reasonable time (< 5 minutes for standard suite)
+- Memory usage should be bounded and predictable
+- Support both single-machine and distributed testing scenarios
+
+### Dependencies
+- Minimize external dependencies beyond Caryatid's existing stack
+- Use only well-maintained, production-ready crates
+- Avoid dependencies that require specific OS features when possible

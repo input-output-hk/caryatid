@@ -1,0 +1,133 @@
+# Caryatid Performance Test Specification
+
+## Overview
+Create a comprehensive performance testing suite for the Caryatid pub/sub framework that provides actionable metrics, supports multiple test scenarios, and enables performance regression detection.
+
+## Requirements
+
+### R1: Comprehensive Performance Metrics
+The test suite must measure and report:
+- **Throughput**: Messages per second across different configurations
+- **Latency**: Average, median, p95, p99 message delivery times
+- **Resource Usage**: CPU, memory, and network utilization
+- **Scalability**: Performance characteristics under different loads (1-100+ concurrent publishers/subscribers)
+
+### R2: Multiple Test Scenarios
+Support the following test scenarios:
+- **Simple Pub/Sub**: Single publisher, single subscriber
+- **Multi-Publisher**: Multiple publishers to single subscriber
+- **Multi-Subscriber**: Single publisher to multiple subscribers
+- **Fan-out**: Multiple publishers to multiple subscribers
+- **Variable Message Sizes**: Test with messages from 100 bytes to 10MB
+- **Burst vs Steady**: Both bursty traffic and steady-state throughput
+- **Slow Consumer**: Single publisher, multiple subscribers with one Rate limited subscriber that causes back-pressure on the publisher
+
+### R3: Bus Configuration Testing
+Test performance across different message bus configurations:
+- **In-Memory Bus**: Zero-copy, same-process messaging
+- **RabbitMQ External Bus**: Network-based messaging
+- **Routing Bus**: Mixed routing scenarios (some internal, some external)
+
+### R4: Statistical Analysis
+Provide statistical analysis of results:
+- Mean, median, standard deviation for all metrics
+- Percentile distribution (p50, p90, p95, p99, p99.9)
+- Confidence intervals where applicable
+- Comparison against baseline measurements
+
+### R5: Configurable Test Parameters
+Allow configuration of:
+- Number of publishers and subscribers
+- Message size and content
+- Test duration or message count
+- Warmup period
+- Sampling rate for metrics collection
+- Bus configuration (internal/external)
+
+### R6: Results Export and Visualization
+Support multiple output formats:
+- **Console**: Real-time summary during test execution
+- **JSON**: Structured output for automated analysis
+- **CSV**: For importing into spreadsheet tools
+- **Markdown Report**: Human-readable summary with charts
+
+## User Stories
+
+### US1: Developer Performance Validation
+**As a** Caryatid framework developer  
+**I want to** run performance tests after making changes  
+**So that** I can verify I haven't introduced performance regressions
+
+**Acceptance Criteria:**
+- Tests run in under 5 minutes for standard configuration
+- Clear pass/fail indicators based on baseline thresholds
+- Easy to identify which specific metric regressed
+
+### US2: Configuration Optimization
+**As a** platform engineer  
+**I want to** compare performance across different configurations  
+**So that** I can choose the optimal setup for my use case
+
+**Acceptance Criteria:**
+- Can run identical tests with different bus configurations
+- Side-by-side comparison of results
+- Recommendations for common scenarios
+
+### US3: Capacity Planning
+**As a** system architect  
+**I want to** understand performance at scale  
+**So that** I can properly size infrastructure
+
+**Acceptance Criteria:**
+- Tests can simulate realistic production loads
+- Clear indication of breaking points and bottlenecks
+- Resource utilization metrics correlated with throughput
+
+### US4: Performance Regression Detection
+**As a** CI/CD pipeline  
+**I want to** automatically detect performance regressions  
+**So that** problematic changes are caught before release
+
+**Acceptance Criteria:**
+- Exit code indicates test pass/fail
+- JSON output includes comparison to baseline
+- Configurable threshold for acceptable regression
+
+### US5: Benchmark Publication
+**As a** potential Caryatid user  
+**I want to** see published performance benchmarks  
+**So that** I can evaluate if Caryatid meets my needs
+
+**Acceptance Criteria:**
+- Reproducible benchmark scenarios
+- Clear documentation of test environment
+- Comparison with other similar frameworks (optional)
+
+## Non-Functional Requirements
+
+### NFR1: Accuracy
+- Measurements must have minimal observer effect
+- Clock resolution sufficient for microsecond-level latency measurement
+- Proper warmup period to exclude JIT/cache effects
+
+### NFR2: Reliability
+- Tests produce consistent results across runs (< 5% variance)
+- Failures are clearly attributable (test failure vs system failure)
+- Graceful degradation on resource exhaustion
+
+### NFR3: Maintainability
+- Test code follows same standards as Caryatid framework
+- Well-documented configuration options
+- Easy to add new test scenarios
+
+### NFR4: Portability
+- Runs on Linux and macOS
+- Minimal dependencies beyond Caryatid
+- Clear documentation of system requirements
+
+## Success Criteria
+1. All test scenarios execute successfully on reference hardware
+2. Results are reproducible within 5% variance
+3. Complete test suite executes in under 10 minutes
+4. Documentation enables new users to run tests within 5 minutes
+5. Results clearly identify performance characteristics and bottlenecks

@@ -1,0 +1,376 @@
+# Caryatid Performance Test Implementation Plan
+
+## Technology Stack
+
+### Core Framework
+- **Language**: Rust (edition 2021)
+- **Async Runtime**: Tokio 1.x (matching Caryatid)
+- **Serialization**: Serde + serde_json + CBOR
+- **Configuration**: config crate with TOML files
+- **Logging**: tracing + tracing-subscriber
+
+### Performance Measurement
+- **High-Resolution Timing**: `std::time::Instant` for microsecond precision
+- **Statistics**: Use `hdrhistogram` crate for latency percentiles
+- **System Metrics**: `sysinfo` crate for CPU/memory monitoring
+- **Results Export**: Manual JSON/CSV generation, `prettytable-rs` for console output
+
+### Testing Infrastructure
+- Reuse Caryatid's existing `Process` and module system
+- Build specialized performance measurement modules
+- Use existing message types with additional metadata for timing
+
+## Architecture
+
+### Project Structure
+```
+examples/performance-suite/
+├── Cargo.toml                    # Dependencies
+├── performance-suite.toml        # Main configuration
+├── README.md                     # Documentation
+├── src/
+│   ├── main.rs                   # Entry point, process setup
+│   ├── config.rs                 # Configuration structures
+│   ├── coordinator.rs            # Test orchestration module
+│   ├── publisher_perf.rs         # Configurable publisher module
+│   ├── subscriber_perf.rs        # Measuring subscriber module
+│   ├── metrics.rs                # Metrics collection and analysis
+│   ├── reporter.rs               # Results output (JSON/CSV/Console)
+│   └── message.rs                # Performance test messages
+├── scenarios/                    # Pre-configured test scenarios
+│   ├── simple.toml
+│   ├── multi_publisher.toml
+│   ├── high_throughput.toml
+│   |── large_messages.toml
+|   └── slow_consumer.toml
+└── baselines/                    # Baseline measurements
+    └── baseline_v1.json
+```
+
+## Component Design
+
+### 1. Message Types (`message.rs`)
+```rust
+pub enum PerfMessage {
+    // Control messages
+    StartTest { scenario_id: String, timestamp: Instant },
+    StopTest { scenario_id: String },
+    
+    // Performance test message with timing metadata
+    PerfData {
+        sequence: u64,
+        timestamp: i64,  // Nanoseconds since epoch
+        payload: Vec<u8>,  // Configurable size
+        scenario_id: String,
+    },
+    
+    // Results reporting
+    Metrics {
+        scenario_id: String,
+        metrics: PerformanceMetrics,
+    },
+}
+
+pub struct PerformanceMetrics {
+    pub total_messages: u64,
+    pub duration_secs: f64,
+    pub throughput_msg_sec: f64,
+    pub latency_histogram: Histogram<u64>,
+    pub queue_depth_histogram: Histogram<u64>,
+    pub memory_usage_mb: f64,
+    pub cpu_percent: f64,
+}
+```
+
+### 2. Coordinator Module (`coordinator.rs`)
+- Orchestrates test execution
+- Reads test scenario configuration
+- Sends StartTest/StopTest signals
+- Collects metrics from subscribers
+- Aggregates results and invokes reporter
+- Manages test lifecycle
+
+**Key Responsibilities:**
+- Load scenario config
+- Initialize test environment
+- Coordinate timing (warmup, test, cooldown)
+- Collect and aggregate metrics
+- Generate reports
+
+### 3. Performance Publisher (`publisher_perf.rs`)
+- Configurable message generation
+- Controlled send rate (messages/sec or unlimited)
+- Variable message sizes
+- Multiple concurrent instances support
+- Precise timestamp injection
+
+**Configuration:**
+- `topic`: Target topic
+- `message_count`: Total messages to send
+- `message_size`: Bytes per message
+- `rate_limit`: Optional messages/sec throttle
+- `concurrent_tasks`: Number of parallel senders
+
+### 4. Performance Subscriber (`subscriber_perf.rs`)
+- High-precision message receipt timing
+- Minimal processing overhead
+- Latency calculation (send timestamp vs receive timestamp)
+- Histogram-based latency tracking
+- Memory-efficient accumulation
+
+**Configuration:**
+- `topic`: Reader topic
+- `rate_limit`: Optional messages/sec read throttle to emulate slow consumer
+- `concurrent_tasks`: Number of parallel receivers
+
+**Features:**
+- Uses HDR Histogram for accurate percentile calculation
+- Tracks first/last message time
+- Tracks depth of queue between sender and receiver(s)
+- Monitors system resources during test
+- Publishes metrics when receiving StopTest
+
+### 5. Metrics Collection (`metrics.rs`)
+```rust
+pub struct MetricsCollector {
+    latency: Histogram<u64>,  // Nanosecond latencies
+    queue_depth: Histogram<u646>, // integer counts
+    start_time: Instant,
+    end_time: Option<Instant>,
+    message_count: u64,
+    system_monitor: SystemMonitor,
+}
+
+impl MetricsCollector {
+    pub fn record_latency(&mut self, nanos: u64);
+    pub fn finalize(&mut self) -> PerformanceMetrics;
+    pub fn percentile(&self, p: f64) -> u64;
+}
+```
+
+### 6. Reporter (`reporter.rs`)
+Multiple output formats:
+
+**Console Output:**
+```
+=== Performance Test Results ===
+Scenario: high_throughput
+Duration: 60.00s
+Messages: 1,000,000
+Throughput: 16,667 msg/sec
+
+Latency (μs):
+  Min: 12
+  p50: 45
+  p95: 123
+  p99: 287
+  Max: 1,543
+
+Resources:
+  CPU: 45% avg
+  Memory: 128 MB
+```
+
+**JSON Output:**
+```json
+{
+  "scenario": "high_throughput",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "duration_secs": 60.0,
+  "messages": 1000000,
+  "throughput": 16667,
+  "latency": {
+    "min": 12,
+    "p50": 45,
+    "p90": 98,
+    "p95": 123,
+    "p99": 287,
+    "p999": 654,
+    "max": 1543,
+    "mean": 52.3,
+    "stddev": 34.2
+  },
+  "queue_deptch": {
+    "min": 5,
+    "p50": 2,
+    "p90": 4,
+    "p95": 9,
+    "p99": 10,
+    "p999": 50,
+    "max": 60,
+    "mean": 8.3,
+    "stddev": 30.2
+  },
+  "resources": {
+    "cpu_percent": 45,
+    "memory_mb": 128
+  }
+}
+```
+
+## Configuration Schema
+
+### Main Config (`performance-suite.toml`)
+```toml
+[coordinator]
+module = "coordinator"
+# Results directory
+output_dir = "./results"
+# Output formats: console, json, csv, markdown
+output_formats = ["console", "json"]
+
+[scenario]
+name = "high_throughput"
+description = "Maximum throughput test with small messages"
+warmup_secs = 5
+test_duration_secs = 60
+cooldown_secs = 2
+
+[module.publisher]
+module = "publisher_perf"
+topic = "perf.test"
+message_count = 1000000
+message_size = 100
+concurrent_tasks = 4
+rate_limit = null  # Unlimited
+
+[module.subscriber]
+module = "subscriber_perf"
+topic = "perf.test"
+rate_limit = null # unlimited
+concurrent_tasks` = 1
+
+# Caryatid standard configuration
+[message-router]
+[[message-router.route]]
+pattern = "perf.#"
+bus = "internal"  # or "external" for RabbitMQ
+
+[message-bus.internal]
+bus = "in-memory"
+
+[message-bus.external]
+bus = "rabbit-mq"
+url = "amqp://guest:guest@localhost:5672"
+```
+
+## Implementation Steps
+
+### Phase 1: Core Infrastructure
+1. Create project structure and Cargo.toml
+2. Implement message types (PerfMessage)
+3. Implement MetricsCollector with HDR histogram
+4. Create basic configuration schema
+5. Implement console reporter
+
+### Phase 2: Publisher and Subscriber Modules
+1. Implement publisher_perf module with configurable parameters
+2. Implement subscriber_perf with high-precision timing
+3. Add resource monitoring (CPU/memory)
+4. Test basic pub/sub flow with timing
+
+### Phase 3: Coordinator and Orchestration
+1. Implement coordinator module
+2. Add test lifecycle management (start/stop signals)
+3. Implement metrics aggregation
+4. Add support for multiple concurrent publishers/subscribers
+
+### Phase 4: Reporting and Analysis
+1. Implement JSON output format
+2. Add CSV export for spreadsheet analysis
+3. Create markdown report generator
+4. Add baseline comparison logic
+
+### Phase 5: Scenarios and Documentation
+1. Create pre-configured scenario files
+2. Implement scenario loader
+3. Write comprehensive README
+4. Add usage examples
+5. Create baseline measurements
+
+### Phase 6: Validation and Optimization
+1. Run tests on reference hardware
+2. Validate reproducibility (< 5% variance)
+3. Optimize overhead of measurement
+4. Create CI/CD integration guide
+
+## Testing Strategy
+
+### Unit Tests
+- Configuration parsing
+- Metrics calculation (histogram percentiles)
+- Message serialization
+- Reporter output formatting
+
+### Integration Tests
+- Full test lifecycle execution
+- Multiple scenario configurations
+- Bus routing (internal vs external)
+- Error handling and edge cases
+
+### Performance Validation
+- Verify measurement overhead is < 5%
+- Confirm reproducibility
+- Validate against existing performance/example
+
+## Dependencies
+
+Add to Cargo.toml:
+```toml
+[dependencies]
+caryatid_process = { path = "../../process" }
+caryatid_sdk = { path = "../../sdk" }
+
+anyhow = "1.0"
+config = "0.15"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+arcstr = { version = "1.2", features = ["serde"] }
+
+# Performance measurement
+hdrhistogram = "7.5"
+sysinfo = "0.30"
+
+# Output formatting
+prettytable-rs = "0.10"
+chrono = "0.4"
+
+[dev-dependencies]
+criterion = "0.5"  # For microbenchmarks
+```
+
+## Deployment
+
+### Running Tests
+```bash
+cd examples/performance-suite
+
+# Run with default scenario
+cargo run --release
+
+# Run specific scenario
+cargo run --release -- --scenario scenarios/high_throughput.toml
+
+# Run with custom configuration
+cargo run --release -- --config custom.toml
+
+# Compare with baseline
+cargo run --release -- --baseline baselines/baseline_v1.json
+```
+
+### CI/CD Integration
+- Add performance test job in GitHub Actions
+- Store baseline in repository
+- Fail build if regression > 10%
+- Upload results as artifacts
+
+## Success Metrics
+1. ✅ All 6 test scenarios execute successfully
+2. ✅ Results reproducible within 5%
+3. ✅ Complete suite runs in < 10 minutes
+4. ✅ JSON output schema validated
+5. ✅ Documentation enables 5-minute onboarding
+6. ✅ Measurement overhead < 5%
