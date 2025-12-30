@@ -1,0 +1,33 @@
+# Slow Consumer Performance Test
+# Rate-limited subscriber to test back-pressure
+
+[coordinator]
+output_dir = "./results"
+output_formats = ["console", "json", "csv"]
+
+[scenario]
+name = "slow_consumer"
+description = "Slow consumer test with rate-limited subscriber"
+warmup_secs = 5
+test_duration_secs = 60
+cooldown_secs = 2
+
+[module.publisher_perf]
+topic = "perf.test"
+message_count = 100000
+message_size = 100
+concurrent_tasks = 2
+# Publisher runs at full speed
+
+[module.subscriber_perf]
+topic = "perf.test"
+concurrent_tasks = 1
+rate_limit = 500.0  # Slow consumer: 500 msg/sec
+
+[message-router]
+[[message-router.route]]
+pattern = "perf.#"
+bus = "internal"
+
+[message-bus.internal]
+class = "in-memory"

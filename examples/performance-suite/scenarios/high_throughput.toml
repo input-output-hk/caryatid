@@ -1,0 +1,32 @@
+# High Throughput Performance Test
+# Maximum throughput test with unlimited rate
+
+[coordinator]
+output_dir = "./results"
+output_formats = ["console", "json", "csv"]
+
+[scenario]
+name = "high_throughput"
+description = "Maximum throughput test with small messages"
+warmup_secs = 5
+test_duration_secs = 60
+cooldown_secs = 2
+
+[module.publisher_perf]
+topic = "perf.test"
+message_count = 1000000
+message_size = 100
+concurrent_tasks = 4
+# No rate limit = maximum speed
+
+[module.subscriber_perf]
+topic = "perf.test"
+concurrent_tasks = 1
+
+[message-router]
+[[message-router.route]]
+pattern = "perf.#"
+bus = "internal"
+
+[message-bus.internal]
+class = "in-memory"

@@ -1,0 +1,31 @@
+# Large Messages Performance Test
+# Test with 10KB messages
+
+[coordinator]
+output_dir = "./results"
+output_formats = ["console", "json", "csv"]
+
+[scenario]
+name = "large_messages"
+description = "Performance test with 10KB messages"
+warmup_secs = 5
+test_duration_secs = 60
+cooldown_secs = 2
+
+[module.publisher_perf]
+topic = "perf.test"
+message_count = 10000
+message_size = 10000
+concurrent_tasks = 1
+
+[module.subscriber_perf]
+topic = "perf.test"
+concurrent_tasks = 1
+
+[message-router]
+[[message-router.route]]
+pattern = "perf.#"
+bus = "internal"
+
+[message-bus.internal]
+class = "in-memory"

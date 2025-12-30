@@ -1,0 +1,31 @@
+# Multi-Subscriber Performance Test
+# Single publisher to multiple subscribers
+
+[coordinator]
+output_dir = "./results"
+output_formats = ["console", "json", "csv"]
+
+[scenario]
+name = "multi_subscriber"
+description = "Multi-subscriber test: 1 publisher, 4 subscribers"
+warmup_secs = 5
+test_duration_secs = 60
+cooldown_secs = 2
+
+[module.publisher_perf]
+topic = "perf.test"
+message_count = 50000
+message_size = 100
+concurrent_tasks = 1
+
+[module.subscriber_perf]
+topic = "perf.test"
+concurrent_tasks = 4
+
+[message-router]
+[[message-router.route]]
+pattern = "perf.#"
+bus = "internal"
+
+[message-bus.internal]
+class = "in-memory"

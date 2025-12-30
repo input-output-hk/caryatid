@@ -1,0 +1,40 @@
+# Performance Test Suite Configuration
+
+[coordinator]
+output_dir = "./results"
+output_formats = ["console", "json"]
+
+[scenario]
+name = "default"
+description = "Default performance test scenario"
+warmup_secs = 5
+test_duration_secs = 60
+cooldown_secs = 2
+
+[module.coordinator]
+
+[module.publisher_perf]
+topic = "perf.test"
+message_count = 100000
+message_size = 100
+concurrent_tasks = 1
+# rate_limit = 1000.0  # Optional: messages per second
+
+[module.subscriber_perf]
+topic = "perf.test"
+concurrent_tasks = 1
+# rate_limit = 500.0  # Optional: for slow consumer testing
+
+# Message routing configuration
+[message-router]
+[[message-router.route]]
+pattern = "perf.#"
+bus = "internal"
+
+# Bus configurations
+[message-bus.internal]
+class = "in-memory"
+
+[message-bus.external]
+class = "rabbit-mq"
+url = "amqp://guest:guest@localhost:5672"

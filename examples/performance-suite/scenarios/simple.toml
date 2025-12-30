@@ -1,0 +1,33 @@
+# Simple Performance Test Scenario
+# Single publisher, single subscriber, moderate message count
+
+[coordinator]
+output_dir = "./results"
+output_formats = ["console", "json", "csv"]
+
+[scenario]
+name = "simple"
+description = "Simple pub/sub test: 1 publisher, 1 subscriber, 10K messages"
+warmup_secs = 2
+test_duration_secs = 5
+cooldown_secs = 1
+
+[module.coordinator]
+
+[module.publisher_perf]
+topic = "perf.test"
+message_count = 10000
+message_size = 100
+concurrent_tasks = 1
+
+[module.subscriber_perf]
+topic = "perf.test"
+concurrent_tasks = 1
+
+[message-router]
+[[message-router.route]]
+pattern = "perf.#"
+bus = "internal"
+
+[message-bus.internal]
+class = "in-memory"
