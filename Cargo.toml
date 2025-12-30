@@ -17,6 +17,7 @@ members = [
     "examples/request",     # Request-response
     "examples/multi",       # Multi-channel subscription
     "examples/performance", # Performance test
+    "examples/performance-suite", # Comprehensive performance test suite
     "examples/typed",       # Typed message test
     "examples/rest",        # REST server test
 ]

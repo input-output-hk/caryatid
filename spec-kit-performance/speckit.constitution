@@ -6,6 +6,7 @@
 - All performance tests must provide accurate, reproducible metrics
 - Tests must measure real-world scenarios, not artificial benchmarks
 - Performance degradation must be detectable and measurable
+- All tests must use a release build
 
 ### 2. Framework Integration
 - Tests must integrate seamlessly with the existing Caryatid framework
