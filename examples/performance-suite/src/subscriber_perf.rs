@@ -74,52 +74,62 @@ impl SubscriberPerf {
         let test_running_for_control = test_running.clone();
 
         // Spawn task to handle control messages
-        tokio::spawn(async move {
+        context.run(async move {
+            info!("Subscriber control task started, listening on perf.control");
             loop {
-                if let Ok((_, msg)) = control_sub.read().await {
-                    match msg.as_ref() {
-                        PerfMessage::StartTest { .. } => {
-                            info!("Subscriber received StartTest signal");
-                            *test_running_for_control.lock().await = true;
-                        }
-                        PerfMessage::StopTest { scenario_id } => {
-                            info!("Subscriber received StopTest signal");
-                            *test_running_for_control.lock().await = false;
-
-                            // Finalize metrics and publish results
-                            let mut metrics_guard = metrics_for_publisher.lock().await;
-                            let perf_metrics = metrics_guard.finalize();
-
-                            info!(
-                                "Subscriber publishing metrics: {} messages, latency p50={:.2}µs",
-                                perf_metrics.total_messages,
-                                perf_metrics.latency_nanos.p50 as f64 / 1000.0
-                            );
-
-                            let metrics_msg = PerfMessage::metrics(
-                                scenario_id.clone(),
-                                subscriber_id_for_publisher.clone(),
-                                perf_metrics,
-                            );
-
-                            if let Err(e) = message_bus
-                                .publish("perf.metrics", Arc::new(metrics_msg))
-                                .await
-                            {
-                                warn!("Failed to publish metrics: {}", e);
-                            } else {
-                                info!("Successfully published metrics to perf.metrics");
+                match control_sub.read().await {
+                    Ok((_, msg)) => {
+                        match msg.as_ref() {
+                            PerfMessage::StartTest { .. } => {
+                                info!("Subscriber received StartTest signal");
+                                *test_running_for_control.lock().await = true;
                             }
+                            PerfMessage::StopTest { scenario_id } => {
+                                info!("Subscriber received StopTest signal");
+                                *test_running_for_control.lock().await = false;
 
-                            break;
+                                // Finalize metrics and publish results
+                                let mut metrics_guard = metrics_for_publisher.lock().await;
+                                let perf_metrics = metrics_guard.finalize();
+
+                                info!(
+                                    "Subscriber publishing metrics: {} messages, latency p50={:.2}µs",
+                                    perf_metrics.total_messages,
+                                    perf_metrics.latency_nanos.p50 as f64 / 1000.0
+                                );
+
+                                let metrics_msg = PerfMessage::metrics(
+                                    scenario_id.clone(),
+                                    subscriber_id_for_publisher.clone(),
+                                    perf_metrics,
+                                );
+
+                                if let Err(e) = message_bus
+                                    .publish("perf.metrics", Arc::new(metrics_msg))
+                                    .await
+                                {
+                                    warn!("Failed to publish metrics: {}", e);
+                                } else {
+                                    info!("Successfully published metrics to perf.metrics");
+                                }
+
+                                break;
+                            }
+                            _ => {
+                                info!("Subscriber received unknown control message");
+                            }
                         }
-                        _ => {}
+                    }
+                    Err(e) => {
+                        warn!("Error reading from control subscription: {:?}", e);
+                        break;
                     }
                 }
             }
+            info!("Subscriber control task exiting");
         });
 
-        // Spawn subscriber task(s)
+        // Spawn subscriber task(s) and wait for subscriptions to be ready
         for _ in 0..subscriber_config.concurrent_tasks {
             // Each task gets its own subscription
             let mut sub = context.subscribe(&subscriber_config.topic).await?;
@@ -188,6 +198,17 @@ impl SubscriberPerf {
                     }
                 }
             });
+        }
+
+        // Signal that subscriber is ready
+        info!("Subscriber ready, signaling coordinator");
+        let ready_msg = PerfMessage::ready(subscriber_id.clone(), "subscriber".to_string());
+        if let Err(e) = context
+            .message_bus
+            .publish("perf.ready", Arc::new(ready_msg))
+            .await
+        {
+            warn!("Failed to send ready signal: {}", e);
         }
 
         Ok(())

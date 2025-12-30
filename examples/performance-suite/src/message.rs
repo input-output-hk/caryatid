@@ -54,6 +54,12 @@ pub struct QueueDepthStats {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum PerfMessage {
+    /// Signal from subscriber that it's ready to receive messages
+    Ready {
+        module_id: String,
+        module_type: String, // "subscriber" or "publisher"
+    },
+
     /// Signal to start a test scenario
     StartTest {
         scenario_id: String,
@@ -91,6 +97,14 @@ impl Default for PerfMessage {
 }
 
 impl PerfMessage {
+    /// Create a Ready signal
+    pub fn ready(module_id: String, module_type: String) -> Self {
+        Self::Ready {
+            module_id,
+            module_type,
+        }
+    }
+
     /// Create a new StartTest message
     pub fn start_test(scenario_id: String) -> Self {
         Self::StartTest {

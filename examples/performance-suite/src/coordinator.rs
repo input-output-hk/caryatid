@@ -46,27 +46,82 @@ impl Coordinator {
         let collected_metrics: Arc<Mutex<Vec<PerformanceMetrics>>> =
             Arc::new(Mutex::new(Vec::new()));
 
-        // Subscribe to metrics messages
+        // Subscribe to metrics messages BEFORE starting the test
         let mut metrics_sub = context.subscribe("perf.metrics").await?;
         let collected_metrics_for_sub = collected_metrics.clone();
 
-        tokio::spawn(async move {
+        info!("Subscribed to perf.metrics topic");
+
+        context.run(async move {
+            info!("Coordinator metrics collector task started");
             loop {
-                if let Ok((_, msg)) = metrics_sub.read().await {
-                    if let PerfMessage::Metrics { metrics, .. } = msg.as_ref() {
-                        info!("Received metrics from subscriber");
-                        collected_metrics_for_sub.lock().await.push(metrics.clone());
+                match metrics_sub.read().await {
+                    Ok((_, msg)) => {
+                        if let PerfMessage::Metrics { metrics, .. } = msg.as_ref() {
+                            info!(
+                                "Coordinator received metrics from subscriber: {} messages",
+                                metrics.total_messages
+                            );
+                            collected_metrics_for_sub.lock().await.push(metrics.clone());
+                        }
                     }
-                } else {
-                    break;
+                    Err(e) => {
+                        warn!("Coordinator metrics subscription error: {:?}", e);
+                        break;
+                    }
+                }
+            }
+            info!("Coordinator metrics collector task exiting");
+        });
+
+        // Subscribe to ready signals FIRST
+        let mut ready_sub = context.subscribe("perf.ready").await?;
+        let ready_modules: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let ready_modules_for_task = ready_modules.clone();
+
+        context.run(async move {
+            info!("Coordinator waiting for module ready signals...");
+            loop {
+                match ready_sub.read().await {
+                    Ok((_, msg)) => {
+                        if let PerfMessage::Ready { module_id, module_type } = msg.as_ref() {
+                            info!("Module ready: {} ({})", module_id, module_type);
+                            ready_modules_for_task.lock().await.push(module_id.clone());
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Ready subscription error: {:?}", e);
+                        break;
+                    }
                 }
             }
         });
 
+        // Give all modules time to signal ready (they signal at end of init)
+        sleep(Duration::from_secs(2)).await;
+
         // Orchestrate test lifecycle
         tokio::spawn(async move {
-            // Initial delay
-            sleep(Duration::from_secs(2)).await;
+            // Wait for modules to signal ready
+            info!("Waiting for all modules to be ready...");
+            let timeout = Duration::from_secs(10);
+            let start = std::time::Instant::now();
+            
+            loop {
+                sleep(Duration::from_millis(500)).await;
+                let ready_count = ready_modules.lock().await.len();
+                
+                // We expect at least 2 modules: publisher and subscriber
+                if ready_count >= 2 {
+                    info!("All modules ready ({}), starting test", ready_count);
+                    break;
+                }
+                
+                if start.elapsed() > timeout {
+                    warn!("Timeout waiting for modules to be ready. Proceeding anyway...");
+                    break;
+                }
+            }
 
             // Warmup phase
             info!("Starting warmup phase ({}s)", scenario_config.warmup_secs);
@@ -106,15 +161,39 @@ impl Coordinator {
 
             sleep(Duration::from_secs(scenario_config.cooldown_secs)).await;
 
-            // Wait a bit more for metrics to arrive
-            sleep(Duration::from_secs(2)).await;
+            // Wait for metrics to arrive with timeout and polling
+            info!("Waiting for metrics from subscribers...");
+            let mut attempts = 0;
+            let max_attempts = 30; // 30 seconds total
+            loop {
+                sleep(Duration::from_secs(1)).await;
+                attempts += 1;
+                
+                let count = collected_metrics.lock().await.len();
+                if count > 0 {
+                    info!("Metrics received after {} seconds", attempts);
+                    break;
+                }
+                
+                if attempts >= max_attempts {
+                    warn!("Timeout waiting for metrics after {} seconds", max_attempts);
+                    break;
+                }
+                
+                if attempts % 5 == 0 {
+                    info!("Still waiting for metrics... ({}/{}s)", attempts, max_attempts);
+                }
+            }
 
             // Aggregate and report metrics
             info!("Aggregating metrics...");
             let metrics_vec = collected_metrics.lock().await;
 
             if metrics_vec.is_empty() {
-                warn!("No metrics collected!");
+                warn!(
+                    "No metrics collected! This may indicate a race condition or subscriber issue."
+                );
+                warn!("Check that subscribers are publishing metrics on the perf.metrics topic.");
                 return;
             }
 
@@ -140,7 +219,8 @@ impl Coordinator {
 
             info!("Performance test complete!");
 
-            // Exit the process after reporting
+            // Force immediate exit - don't rely on graceful shutdown
+            // as it can hang with context.run() tasks
             std::process::exit(0);
         });
 

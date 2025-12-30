@@ -104,6 +104,18 @@ impl PublisherPerf {
             info!("Publisher completed all messages");
         });
 
+        // Signal that publisher is ready
+        info!("Publisher ready, signaling coordinator");
+        let publisher_id = format!("publisher_{}", uuid::Uuid::new_v4());
+        let ready_msg = PerfMessage::ready(publisher_id, "publisher".to_string());
+        if let Err(e) = context
+            .message_bus
+            .publish("perf.ready", Arc::new(ready_msg))
+            .await
+        {
+            warn!("Failed to send ready signal: {}", e);
+        }
+
         Ok(())
     }
 }
