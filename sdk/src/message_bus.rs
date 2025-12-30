@@ -12,6 +12,7 @@ pub type Subscriber<M> = dyn Fn(&str, Arc<M>) -> BoxFuture<'static, ()> + Send +
 pub trait SubscriptionBounds: Send {}
 pub trait Subscription<M>: SubscriptionBounds {
     fn read(&mut self) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>>;
+    fn read_timeout(&mut self, timeout: Duration) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>>;
 }
 
 /// Message bounds trait (awaiting trait aliases)

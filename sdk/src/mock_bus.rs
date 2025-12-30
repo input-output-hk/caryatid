@@ -79,6 +79,16 @@ impl<M: MessageBounds> Subscription<M> for MockSubscription<M> {
             Ok(entry)
         })
     }
+    fn read_timeout(&mut self, timeout: Duration) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>> {
+        Box::pin(async move {
+            let recv_future = self.receiver.recv();
+            match tokio::time::timeout(timeout, recv_future).await {
+                Ok(Some(entry)) => Ok(entry),
+                Ok(None) => bail!("Sender {} has unexpectedly closed", self.id),
+                Err(_) => bail!("Timeout waiting for message on subscription {}", self.id),
+            }
+        })
+    }
 }
 
 pub struct MockBus<M: MessageBounds> {

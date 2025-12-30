@@ -38,9 +38,9 @@ impl PublisherPerf {
         let payload: Vec<u8> = vec![b'X'; publisher_config.message_size];
 
         // Calculate messages per task
-        let messages_per_task =
-            (publisher_config.message_count + publisher_config.concurrent_tasks as u64 - 1)
-                / publisher_config.concurrent_tasks as u64;
+        let messages_per_task = publisher_config
+            .message_count
+            .div_ceil(publisher_config.concurrent_tasks as u64);
 
         // Calculate delay between messages if rate limited
         let delay_between_messages = publisher_config.rate_limit.map(|rate| {
@@ -55,6 +55,25 @@ impl PublisherPerf {
         let mut start_sub = context.subscribe("perf.control").await?;
 
         tokio::spawn(async move {
+            // init phase: wait for all subscriptions to be ready
+            info!(
+                "Initialization phase: waiting {}s for subscriptions to be ready...",
+                2
+            );
+            sleep(Duration::from_secs(2)).await;
+            
+            // Signal that publisher is ready
+            info!("Publisher ready, signaling coordinator");
+            let publisher_id = format!("publisher_{}", uuid::Uuid::new_v4());
+            let ready_msg = PerfMessage::ready(publisher_id, "publisher".to_string());
+            if let Err(e) = context
+                .message_bus
+                .publish("perf.ready", Arc::new(ready_msg))
+                .await
+            {
+                warn!("Failed to send ready signal: {}", e);
+            }
+
             // Wait for start signal
             loop {
                 if let Ok((_, msg)) = start_sub.read().await {
@@ -64,6 +83,9 @@ impl PublisherPerf {
                     }
                 }
             }
+
+            info!("Dropping perf.control subscription");
+            drop(start_sub);
 
             // Start concurrent publishing tasks
             let mut handles = Vec::new();
@@ -103,18 +125,6 @@ impl PublisherPerf {
 
             info!("Publisher completed all messages");
         });
-
-        // Signal that publisher is ready
-        info!("Publisher ready, signaling coordinator");
-        let publisher_id = format!("publisher_{}", uuid::Uuid::new_v4());
-        let ready_msg = PerfMessage::ready(publisher_id, "publisher".to_string());
-        if let Err(e) = context
-            .message_bus
-            .publish("perf.ready", Arc::new(ready_msg))
-            .await
-        {
-            warn!("Failed to send ready signal: {}", e);
-        }
 
         Ok(())
     }

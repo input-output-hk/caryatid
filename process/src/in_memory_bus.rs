@@ -8,7 +8,7 @@ use futures::future::BoxFuture;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::Duration;
-use tracing::info;
+use tracing::{info, warn};
 
 const DEFAULT_SUBSCRIBER_QUEUE_SIZE: i64 = 10;
 const DEFAULT_REQUEST_TIMEOUT: u64 = 5;
@@ -26,6 +26,19 @@ impl<M: MessageBounds> Subscription<M> for InMemorySubscription<M> {
                 if let Some(entry) = self.receiver.recv().await {
                     return Ok(entry);
                 }
+            }
+        })
+    }
+    fn read_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>> {
+        Box::pin(async move {
+            match tokio::time::timeout(timeout, self.read()).await {
+                Ok(result) => result,
+                Err(_) => Err(anyhow::anyhow!(
+                    "Timeout waiting for message on subscription"
+                )),
             }
         })
     }
@@ -91,6 +104,16 @@ impl<M: MessageBounds> MessageBus<M> for InMemoryBus<M> {
                 .map(Arc::clone)
                 .collect()
         };
+
+        if matching.is_empty() {
+            warn!("No subscribers for topic '{}'", topic);
+        } else {
+            info!(
+                "Publishing message on topic '{}' to {} subscriber(s)",
+                topic,
+                matching.len()
+            );
+        }
 
         for patsub in matching {
             let topic = topic.clone();

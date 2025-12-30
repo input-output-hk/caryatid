@@ -216,6 +216,19 @@ impl<M: MessageBounds> Subscription<M> for MonitorSubscription<M> {
             .fuse(),
         )
     }
+    fn read_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>> {
+        Box::pin(
+            MonitorReadFuture {
+                inner: self.inner.read_timeout(timeout),
+                state: &self.state,
+                topic: &self.topic,
+            }
+            .fuse(),
+        )
+    }
 }
 
 struct MonitorReadFuture<'a, M: MessageBounds> {

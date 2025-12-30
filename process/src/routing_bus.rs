@@ -57,6 +57,14 @@ impl<M: MessageBounds> Subscription<M> for RoutingSubscription<'_, M> {
             }
         })
     }
+    fn read_timeout(&mut self, timeout: Duration) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>> {
+        Box::pin(async move {
+            match tokio::time::timeout(timeout, self.read()).await {
+                Ok(result) => result,
+                Err(_) => Err(anyhow!("Timeout waiting for message on routing subscription")),
+            }
+        })
+    }
 }
 
 struct Route<M: MessageBounds> {

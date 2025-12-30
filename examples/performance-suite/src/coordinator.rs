@@ -6,10 +6,11 @@ use crate::reporter::create_reporter;
 use ::config::Config;
 use anyhow::Result;
 use caryatid_sdk::{module, Context};
+use core::panic;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 /// Test coordinator
 #[module(
@@ -79,12 +80,16 @@ impl Coordinator {
         let ready_modules: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let ready_modules_for_task = ready_modules.clone();
 
-        context.run(async move {
+        tokio::spawn(async move {
             info!("Coordinator waiting for module ready signals...");
             loop {
                 match ready_sub.read().await {
                     Ok((_, msg)) => {
-                        if let PerfMessage::Ready { module_id, module_type } = msg.as_ref() {
+                        if let PerfMessage::Ready {
+                            module_id,
+                            module_type,
+                        } = msg.as_ref()
+                        {
                             info!("Module ready: {} ({})", module_id, module_type);
                             ready_modules_for_task.lock().await.push(module_id.clone());
                         }
@@ -97,34 +102,39 @@ impl Coordinator {
             }
         });
 
-        // Give all modules time to signal ready (they signal at end of init)
-        sleep(Duration::from_secs(2)).await;
-
         // Orchestrate test lifecycle
         tokio::spawn(async move {
+            // Give all modules time to signal ready (they signal at end of init)
+            // init phase: wait for all subscriptions to be ready
+            info!(
+                "Initialization phase: waiting {}s for subscriptions to be ready...",
+                2
+            );
+            sleep(Duration::from_secs(2)).await;
+
             // Wait for modules to signal ready
             info!("Waiting for all modules to be ready...");
             let timeout = Duration::from_secs(10);
             let start = std::time::Instant::now();
-            
+
             loop {
                 sleep(Duration::from_millis(500)).await;
                 let ready_count = ready_modules.lock().await.len();
-                
+
                 // We expect at least 2 modules: publisher and subscriber
                 if ready_count >= 2 {
                     info!("All modules ready ({}), starting test", ready_count);
                     break;
                 }
-                
+
                 if start.elapsed() > timeout {
-                    warn!("Timeout waiting for modules to be ready. Proceeding anyway...");
-                    break;
+                    error!("Timeout waiting for modules to be ready. Halting test.");
+                    std::process::exit(1);
                 }
             }
 
             // Warmup phase
-            info!("Starting warmup phase ({}s)", scenario_config.warmup_secs);
+            // info!("Starting warmup phase ({}s)", scenario_config.warmup_secs);
             let start_msg = PerfMessage::start_test(scenario_id.clone());
             if let Err(e) = message_bus
                 .publish("perf.control", Arc::new(start_msg))
@@ -134,13 +144,10 @@ impl Coordinator {
                 return;
             }
 
-            sleep(Duration::from_secs(scenario_config.warmup_secs)).await;
+            // sleep(Duration::from_secs(scenario_config.warmup_secs)).await;
 
             // Test phase
-            info!(
-                "Warmup complete. Running test for {}s",
-                scenario_config.test_duration_secs
-            );
+            info!("Running test for {}s", scenario_config.test_duration_secs);
             sleep(Duration::from_secs(scenario_config.test_duration_secs)).await;
 
             // Cooldown phase
@@ -168,20 +175,33 @@ impl Coordinator {
             loop {
                 sleep(Duration::from_secs(1)).await;
                 attempts += 1;
-                
+
                 let count = collected_metrics.lock().await.len();
                 if count > 0 {
                     info!("Metrics received after {} seconds", attempts);
                     break;
                 }
-                
+
                 if attempts >= max_attempts {
                     warn!("Timeout waiting for metrics after {} seconds", max_attempts);
                     break;
                 }
-                
+
                 if attempts % 5 == 0 {
-                    info!("Still waiting for metrics... ({}/{}s)", attempts, max_attempts);
+                    info!(
+                        "Still waiting for metrics... ({}/{}s)",
+                        attempts, max_attempts
+                    );
+                    info!("re-Sending StopTest signal to perf.control");
+                    let stop_msg = PerfMessage::stop_test(scenario_id.clone());
+                    if let Err(e) = message_bus
+                        .publish("perf.control", Arc::new(stop_msg))
+                        .await
+                    {
+                        warn!("Failed to send StopTest: {}", e);
+                        return;
+                    }
+                    info!("re-send of StopTest signal sent successfully");
                 }
             }
 
@@ -190,11 +210,10 @@ impl Coordinator {
             let metrics_vec = collected_metrics.lock().await;
 
             if metrics_vec.is_empty() {
-                warn!(
+                error!(
                     "No metrics collected! This may indicate a race condition or subscriber issue."
                 );
-                warn!("Check that subscribers are publishing metrics on the perf.metrics topic.");
-                return;
+                std::process::exit(1);
             }
 
             info!("Collected metrics from {} subscriber(s)", metrics_vec.len());

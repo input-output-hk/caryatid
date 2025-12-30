@@ -4,13 +4,14 @@ use crate::config::SubscriberConfig;
 use crate::message::PerfMessage;
 use crate::metrics::MetricsCollector;
 use ::config::Config;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use caryatid_sdk::{module, Context};
+use core::panic;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tokio::time::{interval, sleep, Duration};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 /// Performance test subscriber
 #[module(
@@ -72,12 +73,32 @@ impl SubscriberPerf {
         let message_bus = context.message_bus.clone();
         let subscriber_id_for_publisher = subscriber_id.clone();
         let test_running_for_control = test_running.clone();
+        let context_for_control = context.clone();
 
         // Spawn task to handle control messages
-        context.run(async move {
+        tokio::spawn(async move {
+            // init phase: wait for all subscriptions to be ready
+            info!(
+                "Initialization phase: waiting {}s for subscriptions to be ready...",
+                2
+            );
+            sleep(Duration::from_secs(2)).await;
+
+            // Signal that subscriber is ready
+            info!("Subscriber ready, signaling coordinator");
+            let ready_msg = PerfMessage::ready(subscriber_id.clone(), "subscriber".to_string());
+            if let Err(e) = context_for_control
+                .message_bus
+                .publish("perf.ready", Arc::new(ready_msg))
+                .await
+            {
+                warn!("Failed to send ready signal: {}", e);
+            }
+
             info!("Subscriber control task started, listening on perf.control");
             loop {
-                match control_sub.read().await {
+                // match control_sub.read().await {
+                match control_sub.read_timeout(Duration::from_secs(3)).await {
                     Ok((_, msg)) => {
                         match msg.as_ref() {
                             PerfMessage::StartTest { .. } => {
@@ -122,7 +143,7 @@ impl SubscriberPerf {
                     }
                     Err(e) => {
                         warn!("Error reading from control subscription: {:?}", e);
-                        break;
+                        // std::process::exit(1);
                     }
                 }
             }
@@ -136,79 +157,61 @@ impl SubscriberPerf {
             let metrics = metrics.clone();
             let last_sequence = last_sequence.clone();
             let delay = delay_between_reads;
-            let test_running = test_running.clone();
 
-            context.run(async move {
+            tokio::spawn(async move {
                 let mut msg_count = 0u64;
-                loop {
-                    if let Ok((_, message)) = sub.read().await {
-                        // Process PerfData messages
-                        if let PerfMessage::PerfData {
-                            sequence,
-                            timestamp_nanos,
-                            ..
-                        } = message.as_ref()
+                while let Ok((_, message)) = sub.read().await {
+                    // Process PerfData messages
+                    if let PerfMessage::PerfData {
+                        sequence,
+                        timestamp_nanos,
+                        ..
+                    } = message.as_ref()
+                    {
+                        msg_count += 1;
+                        if msg_count % 1000 == 0 {
+                            info!("Subscriber received {} messages", msg_count);
+                        }
+
+                        // Always record metrics (test_running flag is for resource monitoring only)
                         {
-                            msg_count += 1;
-                            if msg_count % 1000 == 0 {
-                                info!("Subscriber received {} messages", msg_count);
-                            }
+                            // Calculate latency
+                            let now_nanos = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .expect("Time went backwards")
+                                .as_nanos() as i64;
 
-                            // Always record metrics (test_running flag is for resource monitoring only)
-                            {
-                                // Calculate latency
-                                let now_nanos = SystemTime::now()
-                                    .duration_since(UNIX_EPOCH)
-                                    .expect("Time went backwards")
-                                    .as_nanos()
-                                    as i64;
+                            let latency_nanos = (now_nanos - timestamp_nanos) as u64;
 
-                                let latency_nanos = (now_nanos - timestamp_nanos) as u64;
+                            // Calculate queue depth (gap from last sequence)
+                            let mut last_seq = last_sequence.lock().await;
+                            let queue_depth = if *last_seq > 0 {
+                                sequence.saturating_sub(*last_seq)
+                            } else {
+                                1
+                            };
+                            *last_seq = *sequence;
+                            drop(last_seq);
 
-                                // Calculate queue depth (gap from last sequence)
-                                let mut last_seq = last_sequence.lock().await;
-                                let queue_depth = if *last_seq > 0 {
-                                    sequence.saturating_sub(*last_seq)
-                                } else {
-                                    1
-                                };
-                                *last_seq = *sequence;
-                                drop(last_seq);
+                            // Record metrics
+                            let mut metrics_guard = metrics.lock().await;
+                            metrics_guard.record_latency(latency_nanos);
+                            metrics_guard.record_queue_depth(queue_depth);
+                            metrics_guard.increment_message_count();
+                            drop(metrics_guard);
 
-                                // Record metrics
-                                let mut metrics_guard = metrics.lock().await;
-                                metrics_guard.record_latency(latency_nanos);
-                                metrics_guard.record_queue_depth(queue_depth);
-                                metrics_guard.increment_message_count();
-                                drop(metrics_guard);
-
-                                // Apply rate limiting if configured
-                                if let Some(delay_duration) = delay {
-                                    info!(
-                                        "Subscriber subscription closed after {} messages",
-                                        msg_count
-                                    );
-                                    sleep(delay_duration).await;
-                                }
+                            // Apply rate limiting if configured
+                            if let Some(delay_duration) = delay {
+                                info!(
+                                    "Subscriber subscription closed after {} messages",
+                                    msg_count
+                                );
+                                sleep(delay_duration).await;
                             }
                         }
-                    } else {
-                        // Subscription closed
-                        break;
                     }
                 }
             });
-        }
-
-        // Signal that subscriber is ready
-        info!("Subscriber ready, signaling coordinator");
-        let ready_msg = PerfMessage::ready(subscriber_id.clone(), "subscriber".to_string());
-        if let Err(e) = context
-            .message_bus
-            .publish("perf.ready", Arc::new(ready_msg))
-            .await
-        {
-            warn!("Failed to send ready signal: {}", e);
         }
 
         Ok(())

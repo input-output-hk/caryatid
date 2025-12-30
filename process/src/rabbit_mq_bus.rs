@@ -54,6 +54,19 @@ impl<M: MessageBounds> Subscription<M> for RabbitMQSubscription<M> {
             }
         })
     }
+    fn read_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> BoxFuture<'_, anyhow::Result<(String, Arc<M>)>> {
+        Box::pin(async move {
+            match tokio::time::timeout(timeout, self.read()).await {
+                Ok(result) => result,
+                Err(_) => Err(anyhow::anyhow!(
+                    "Timeout waiting for message on subscription"
+                )),
+            }
+        })
+    }
 }
 
 /// RabbitMQ message bus implementation
