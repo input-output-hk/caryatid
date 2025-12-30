@@ -7,10 +7,12 @@ output_formats = ["console", "json", "csv"]
 
 [scenario]
 name = "multi_publisher"
-description = "Multi-publisher test: 4 publishers, 1 subscriber"
-warmup_secs = 5
-test_duration_secs = 60
-cooldown_secs = 2
+description = "Multi-publisher test: 4 -> 1"
+warmup_secs = 2
+test_duration_secs = 10
+cooldown_secs = 1
+
+[module.coordinator]
 
 [module.publisher_perf]
 topic = "perf.test"

@@ -7,14 +7,16 @@ output_formats = ["console", "json", "csv"]
 
 [scenario]
 name = "high_throughput"
-description = "Maximum throughput test with small messages"
-warmup_secs = 5
-test_duration_secs = 60
-cooldown_secs = 2
+description = "Maximum throughput test with small messages, 4 -> 1"
+warmup_secs = 2
+test_duration_secs = 10
+cooldown_secs = 1
+
+[module.coordinator]
 
 [module.publisher_perf]
 topic = "perf.test"
-message_count = 1000000
+message_count = 100000
 message_size = 100
 concurrent_tasks = 4
 # No rate limit = maximum speed

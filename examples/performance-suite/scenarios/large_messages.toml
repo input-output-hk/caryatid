@@ -7,10 +7,12 @@ output_formats = ["console", "json", "csv"]
 
 [scenario]
 name = "large_messages"
-description = "Performance test with 10KB messages"
-warmup_secs = 5
-test_duration_secs = 60
-cooldown_secs = 2
+description = "Performance test with 10KB messages, 1 -> 1"
+warmup_secs = 2
+test_duration_secs = 10
+cooldown_secs = 1
+
+[module.coordinator]
 
 [module.publisher_perf]
 topic = "perf.test"

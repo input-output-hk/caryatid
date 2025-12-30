@@ -7,7 +7,7 @@ output_formats = ["console", "json", "csv"]
 
 [scenario]
 name = "simple"
-description = "Simple pub/sub test: 1 publisher, 1 subscriber, 10K messages"
+description = "Simple pub/sub test: 10K messages, 1 -> 1"
 warmup_secs = 2
 test_duration_secs = 5
 cooldown_secs = 1
@@ -16,7 +16,7 @@ cooldown_secs = 1
 
 [module.publisher_perf]
 topic = "perf.test"
-message_count = 10000
+message_count = 100000
 message_size = 100
 concurrent_tasks = 1
 

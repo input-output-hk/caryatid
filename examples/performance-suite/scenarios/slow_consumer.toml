@@ -7,11 +7,11 @@ output_formats = ["console", "json", "csv"]
 
 [scenario]
 name = "slow_consumer"
-description = "Slow consumer test with rate-limited subscriber"
+description = "Slow consumer test with rate-limited subscriber, 2 -> 1"
 warmup_secs = 5
 test_duration_secs = 60
 cooldown_secs = 2
-
+[module.coordinator]
 [module.publisher_perf]
 topic = "perf.test"
 message_count = 100000

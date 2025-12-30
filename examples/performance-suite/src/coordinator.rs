@@ -21,12 +21,14 @@ pub struct Coordinator;
 
 impl Coordinator {
     async fn init(&self, context: Arc<Context<PerfMessage>>, config: Arc<Config>) -> Result<()> {
-        // Parse configurations
-        let coordinator_config: CoordinatorConfig = config
+        // Parse configurations from root config (not module-scoped config)
+        let coordinator_config: CoordinatorConfig = context
+            .config
             .get("coordinator")
             .unwrap_or_else(|_| CoordinatorConfig::default());
 
-        let scenario_config: ScenarioConfig = config
+        let scenario_config: ScenarioConfig = context
+            .config
             .get("scenario")
             .unwrap_or_else(|_| ScenarioConfig::default());
 
@@ -92,6 +94,7 @@ impl Coordinator {
                 scenario_config.cooldown_secs
             );
             let stop_msg = PerfMessage::stop_test(scenario_id.clone());
+            info!("Sending StopTest signal to perf.control");
             if let Err(e) = message_bus
                 .publish("perf.control", Arc::new(stop_msg))
                 .await
@@ -99,6 +102,7 @@ impl Coordinator {
                 warn!("Failed to send StopTest: {}", e);
                 return;
             }
+            info!("StopTest signal sent successfully");
 
             sleep(Duration::from_secs(scenario_config.cooldown_secs)).await;
 
