@@ -10,7 +10,7 @@ use lapin::{
         BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions, QueueBindOptions,
         QueueDeclareOptions,
     },
-    types::FieldTable,
+    types::{FieldTable, ShortString},
     BasicProperties, Channel, Connection, ConnectionProperties, Consumer,
 };
 use std::marker::PhantomData;
@@ -60,7 +60,7 @@ impl<M: MessageBounds> Subscription<M> for RabbitMQSubscription<M> {
 pub struct RabbitMQBus<M: MessageBounds> {
     connection: Arc<Mutex<Connection>>, // RabbitMQ connection
     channel: Arc<Mutex<Channel>>,       // RabbitMQ outgoing channel
-    exchange: String,                   // Exchange name
+    exchange: ShortString,              // Exchange name
     request_timeout: Duration,          // Handle request timeout
     _phantom: PhantomData<M>,           // Required to associate with <M> (eww)
 }
@@ -74,8 +74,7 @@ impl<M: MessageBounds> RabbitMQBus<M> {
             .unwrap_or("amqp://127.0.0.1:5672/%2f".to_string());
         info!("Connecting to RabbitMQ at {}", url);
 
-        let props =
-            ConnectionProperties::default().with_executor(tokio_executor_trait::Tokio::current());
+        let props = ConnectionProperties::default();
         let connection = Connection::connect(&url, props)
             .await
             .with_context(|| "Can't create RabbitMQ connection")?;
@@ -83,9 +82,10 @@ impl<M: MessageBounds> RabbitMQBus<M> {
         info!("RabbitMQ connected");
 
         // Get exchange name
-        let exchange_name = config
+        let exchange_name: ShortString = config
             .get_string("exchange")
-            .unwrap_or("caryatid".to_string());
+            .unwrap_or("caryatid".to_string())
+            .into();
 
         // Create a channel for outgoing messages
         let channel = connection
@@ -96,7 +96,7 @@ impl<M: MessageBounds> RabbitMQBus<M> {
         // Declare the topic exchange
         channel
             .exchange_declare(
-                &exchange_name,
+                exchange_name.clone(),
                 lapin::ExchangeKind::Topic,
                 ExchangeDeclareOptions::default(),
                 FieldTable::default(),
@@ -126,7 +126,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned> MessageB
 {
     /// Publish a message on a topic
     async fn publish(&self, topic: &str, message: Arc<M>) -> Result<()> {
-        let topic = topic.to_string();
+        let topic: ShortString = topic.into();
         let channel = self.channel.lock().await;
 
         // Serialise the message
@@ -135,8 +135,8 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned> MessageB
         // Publish the message to the queue
         channel
             .basic_publish(
-                &self.exchange,
-                &topic,
+                self.exchange.clone(),
+                topic,
                 BasicPublishOptions::default(),
                 &payload,
                 BasicProperties::default(),
@@ -156,7 +156,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned> MessageB
     async fn subscribe(&self, topic: &str) -> Result<Box<dyn Subscription<M>>> {
         // Clone over async boundary
         let connection = self.connection.clone();
-        let topic = topic.to_string();
+        let topic: ShortString = topic.into();
         let exchange = self.exchange.clone();
 
         // Create a new channel for this subscriber
@@ -170,7 +170,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned> MessageB
         // Declare the queue
         let queue = channel
             .queue_declare(
-                &topic,
+                topic.clone(),
                 QueueDeclareOptions::default(),
                 FieldTable::default(),
             )
@@ -180,9 +180,9 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned> MessageB
         // Bind the queue to the exchange with the specified pattern
         channel
             .queue_bind(
-                queue.name().as_str(),
-                &exchange,
-                &topic,
+                queue.name().clone(),
+                exchange,
+                topic,
                 QueueBindOptions::default(),
                 FieldTable::default(),
             )
@@ -192,8 +192,8 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned> MessageB
         // Start consuming messages from the queue
         let consumer = channel
             .basic_consume(
-                queue.name().as_str(),
-                "",
+                queue.name().clone(),
+                "".into(),
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
@@ -212,7 +212,7 @@ impl<M: MessageBounds + serde::Serialize + serde::de::DeserializeOwned> MessageB
 
         // Close the connection
         let connection = self.connection.lock().await;
-        connection.close(200, "Goodbye").await?;
+        connection.close(200, "Goodbye".into()).await?;
         Ok(())
     }
 }
