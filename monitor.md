@@ -1,23 +1,29 @@
-# Module monitor
+# Monitor
 
-Caryatid supports a "monitor" to see the activity of the different modules and topics in a process. It's implemented as an overlay to the message bus, which tracks reads/writes to each topic in an in-memory `DashMap`.
+Caryatid includes a monitor for observing module and topic activity. It wraps the message bus and tracks reads/writes to each topic in an in-memory `DashMap`. Useful for debugging slowness/stoppages or understanding module interactions.
 
-This monitor is useful for debugging slowness/stoppages, or for understanding the interactions between modules. It's not intended to serve as a form of instrumentation.
+## Configuration
 
-Below is how to enable it:
 ```toml
 [monitor]
-output = "monitor.json" # Write to a file named monitor.json
-frequency_secs = 5.0    # every 5 seconds
+output = "monitor.json"              # Write snapshots to file (optional)
+topic = "caryatid.monitor.snapshot"  # Publish to RabbitMQ (optional)
+frequency_secs = 5.0                 # Snapshot interval in seconds
 ```
 
-Every module shows a list of "reads" (streams it reads from) and "writes" (streams it writes to). 
+You can use `output`, `topic`, or both:
+- `output`: Writes JSON snapshots to a file
+- `topic`: Publishes snapshots directly to the first configured RabbitMQ bus (no routing rules needed)
 
-We track this information for reads:
- - `read`: how many messages this module has read from this topic.
- - `unread`: how many messages are available for this module on this topic. This is based on how many messages were published by another module, it will be an underestimate if messages are sent over rabbitmq.
- - `pending_for`: how long has this module been waiting to read a message on this topic.
+## Output Format
 
-We track this information for writes:
-- `written`: how many messages this module has written to this topic.
-- `pending_for`: how long has this module been waiting to write a message to this topic. If this is set, the topic is congested; some module is subscribed to it but not reading from it.
+Each module lists its "reads" (topics it subscribes to) and "writes" (topics it publishes to).
+
+**Reads:**
+- `read`: Total messages read from this topic
+- `unread`: Messages available on this topic (based on what other modules published; will be an underestimate if messages arrive via RabbitMQ)
+- `pending_for`: How long this module has been waiting to read from this topic
+
+**Writes:**
+- `written`: Total messages written to this topic
+- `pending_for`: How long this module has been waiting to write to this topic (if set, indicates congestion - a subscriber exists but isn't reading)
