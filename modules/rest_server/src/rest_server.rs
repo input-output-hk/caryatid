@@ -5,15 +5,15 @@ use anyhow::Result;
 use caryatid_sdk::{module, Context, MessageBounds};
 use config::Config;
 use std::{collections::HashMap, sync::Arc};
+use tokio::net::TcpListener;
 use tracing::{error, info};
 
 use axum::{
-    body::Body,
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
     response::Response,
     Router,
 };
-use hyper::body;
 use tower_http::cors::{Any, CorsLayer};
 
 use std::convert::Infallible;
@@ -28,6 +28,8 @@ const DEFAULT_PORT: u16 = 4340;
 
 /// Maximum length of body to log
 const MAX_LOG: usize = 40;
+/// Request body limit (2mb matches axum's default)
+const DEFAULT_BODY_LIMIT: i64 = 2 * 1024 * 1024;
 
 /// REST module
 /// Parameterised by the outer message enum used on the bus
@@ -40,9 +42,10 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M> {
 
         // Get topic prefix from config
         let topic_prefix = config.get_string("topic").unwrap_or("rest".to_string());
+        let body_limit = config.get_int("body-limit").unwrap_or(DEFAULT_BODY_LIMIT) as usize;
 
         // Generic request handler
-        let handle_request = |req: Request<Body>| async move {
+        let handle_request = move |req: Request<Body>| async move {
             info!(
                 "Received REST request {} {}{}",
                 req.method().as_str(),
@@ -69,13 +72,13 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M> {
                 })
                 .collect();
 
-            let bytes = match body::to_bytes(req.into_body()).await {
+            let bytes = match to_bytes(req.into_body(), body_limit).await {
                 Ok(b) => b,
                 Err(e) => {
                     return Ok(Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
                         .body(e.to_string())
-                        .unwrap())
+                        .unwrap());
                 }
             };
 
@@ -85,7 +88,7 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M> {
                     return Ok(Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
                         .body(e.to_string())
-                        .unwrap())
+                        .unwrap());
                 }
             };
 
@@ -167,8 +170,8 @@ impl<M: From<RESTRequest> + GetRESTResponse + MessageBounds> RESTServer<M> {
             );
 
             // Run it
-            axum::Server::bind(&addr)
-                .serve(app.into_make_service())
+            let listener = TcpListener::bind(&addr).await.unwrap();
+            axum::serve(listener, app.into_make_service())
                 .await
                 .unwrap();
         });
@@ -185,7 +188,7 @@ mod tests {
     use caryatid_sdk::Module;
     use config::{Config, FileFormat};
     use futures::future;
-    use hyper::Client;
+    use reqwest::Client;
     use std::net::TcpListener;
     use tokio::sync::{watch::Sender, Notify};
     use tokio::time::{timeout, Duration};
@@ -332,8 +335,11 @@ mod tests {
 
         // Request it
         let client = Client::new();
-        let uri = format!("http://127.0.0.1:{}/test", port).parse().unwrap();
-        match timeout(Duration::from_secs(1), client.get(uri)).await {
+        let request = client
+            .get(format!("http://127.0.0.1:{port}/test"))
+            .build()
+            .unwrap();
+        match timeout(Duration::from_secs(1), client.execute(request)).await {
             Ok(Ok(response)) => {
                 debug!("HTTP response: {:?}", response);
                 assert_eq!(response.status(), 200);
@@ -370,9 +376,12 @@ mod tests {
 
         // Request it
         let client = Client::new();
-        let uri = format!("http://127.0.0.1:{}/test", port).parse().unwrap();
+        let request = client
+            .get(format!("http://127.0.0.1:{port}/test"))
+            .build()
+            .unwrap();
         // Note long enough timeout for bus to timeout above
-        match timeout(Duration::from_secs(2), client.get(uri)).await {
+        match timeout(Duration::from_secs(2), client.execute(request)).await {
             Ok(Ok(response)) => {
                 debug!("HTTP response: {:?}", response);
                 assert_eq!(response.status(), 404);

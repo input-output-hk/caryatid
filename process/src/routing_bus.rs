@@ -214,7 +214,7 @@ where
     /// Shut down, shutting down all the buses
     async fn shutdown(&self) -> Result<()> {
         let buses = self.buses.lock().await;
-        for (_, bus) in buses.iter() {
+        for bus in buses.values() {
             let _ = bus.shutdown().await;
         }
         Ok(())
