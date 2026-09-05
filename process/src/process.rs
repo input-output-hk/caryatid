@@ -2,6 +2,7 @@
 //! Loads and runs modules built with caryatid-sdk
 
 use anyhow::{anyhow, Result};
+use buswatch_types::Snapshot;
 use caryatid_sdk::config::{build_module_config, config_from_value, get_sub_config};
 use caryatid_sdk::context::GlobalContext;
 use caryatid_sdk::{Context, MessageBounds, MessageBus, Module, ModuleRegistry};
@@ -34,6 +35,10 @@ pub struct Process<M: MessageBounds> {
 
     /// Active modules by name
     modules: HashMap<String, Arc<dyn Module<M>>>,
+
+    /// RabbitMQ bus for monitor publishing (if configured)
+    /// Uses Snapshot directly so it doesn't depend on M
+    monitor_bus: Option<Arc<RabbitMQBus<Snapshot>>>,
 }
 
 impl<M: MessageBounds> Process<M> {
@@ -59,6 +64,21 @@ impl<M: MessageBounds> Process<M> {
         };
 
         Ok(BusInfo { id, bus })
+    }
+
+    /// Find RabbitMQ config from message-bus configurations
+    fn find_rabbitmq_config(config: &Config) -> Option<Config> {
+        if let Ok(mb_confs) = config.get_table("message-bus") {
+            for (_id, mb_conf) in mb_confs {
+                if let Ok(mbt) = mb_conf.into_table() {
+                    let mbc = config_from_value(mbt.clone());
+                    if mbc.get_string("class").ok() == Some("rabbit-mq".to_string()) {
+                        return Some(mbc);
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Create a process with the given config
@@ -91,10 +111,34 @@ impl<M: MessageBounds> Process<M> {
         // Create the shared context
         let context = GlobalContext::new(config.clone(), routing_bus.clone(), Sender::new(false));
 
+        // Create a separate RabbitMQ bus for monitor publishing if topic is configured
+        let monitor_bus = if config
+            .get::<MonitorConfig>("monitor")
+            .ok()
+            .and_then(|mc| mc.topic)
+            .is_some()
+        {
+            if let Some(rabbitmq_config) = Self::find_rabbitmq_config(&config) {
+                match RabbitMQBus::<Snapshot>::new(&rabbitmq_config).await {
+                    Ok(bus) => Some(Arc::new(bus)),
+                    Err(e) => {
+                        warn!("Failed to create monitor RabbitMQ bus: {e}");
+                        None
+                    }
+                }
+            } else {
+                warn!("Monitor topic configured but no RabbitMQ bus available");
+                None
+            }
+        } else {
+            None
+        };
+
         Self {
             config,
             context,
             modules: HashMap::new(),
+            monitor_bus,
         }
     }
 
@@ -156,7 +200,32 @@ impl<M: MessageBounds> Process<M> {
 
         info!("Running...");
 
-        let monitor_task = monitor.map(|m| tokio::spawn(m.monitor()));
+        // Start the monitor, with optional topic publishing via dedicated RabbitMQ connection
+        let monitor_task = match monitor {
+            Some(m) => {
+                let publisher = match (m.topic(), &self.monitor_bus) {
+                    (Some(topic), Some(bus)) => {
+                        let bus = bus.clone();
+                        let topic = topic.to_string();
+                        info!("Monitor publishing to topic: {topic}");
+                        Some(Box::new(move |snapshot: Snapshot| {
+                            let bus = bus.clone();
+                            let topic = topic.clone();
+                            // Publish snapshot directly (serialized to CBOR by the bus)
+
+                            tokio::spawn(async move {
+                                if let Err(e) = bus.publish(&topic, Arc::new(snapshot)).await {
+                                    warn!("Failed to publish monitor snapshot: {e}");
+                                }
+                            });
+                        }) as monitor::SnapshotPublisher)
+                    }
+                    _ => None,
+                };
+                Some(tokio::spawn(m.monitor(publisher)))
+            }
+            None => None,
+        };
 
         // Send the startup message if required
         let _ = self.context.startup_watch.send(true);
@@ -171,6 +240,7 @@ impl<M: MessageBounds> Process<M> {
         Ok(RunningProcess {
             context: self.context,
             monitor: monitor_task,
+            monitor_bus: self.monitor_bus,
         })
     }
 }
@@ -190,6 +260,9 @@ pub struct RunningProcess<M: MessageBounds> {
 
     /// A handle to the monitor task, if one is running
     monitor: Option<JoinHandle<()>>,
+
+    /// RabbitMQ bus for monitor (kept alive for the process lifetime)
+    monitor_bus: Option<Arc<RabbitMQBus<Snapshot>>>,
 }
 
 impl<M: MessageBounds> RunningProcess<M> {
@@ -200,6 +273,11 @@ impl<M: MessageBounds> RunningProcess<M> {
 
         if let Some(monitor) = self.monitor {
             monitor.abort();
+        }
+
+        // Shutdown monitor bus if present
+        if let Some(bus) = self.monitor_bus {
+            let _ = bus.shutdown().await;
         }
 
         Ok(())

@@ -4,16 +4,18 @@ use std::{
     path::PathBuf,
     sync::Arc,
     task::Poll,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::Result;
 use async_trait::async_trait;
+use buswatch_types::{Microseconds, ModuleMetrics, ReadMetrics, Snapshot, WriteMetrics};
 use caryatid_sdk::{MessageBounds, MessageBus, Subscription, SubscriptionBounds};
 use dashmap::DashMap;
 use futures::{future::BoxFuture, FutureExt};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tokio::{fs, time};
+use tracing::warn;
 
 #[derive(Default, Clone)]
 struct ReadStreamState {
@@ -33,53 +35,77 @@ struct ModuleState {
     writes: DashMap<String, WriteStreamState>,
 }
 
-#[derive(Serialize)]
-struct SerializedReadStreamState {
-    read: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    unread: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pending_for: Option<String>,
-}
-
-#[derive(Serialize)]
-struct SerializedWriteStreamState {
-    written: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pending_for: Option<String>,
-}
-
-#[derive(Serialize)]
-struct SerializedModuleState {
-    reads: BTreeMap<String, SerializedReadStreamState>,
-    writes: BTreeMap<String, SerializedWriteStreamState>,
-}
-
 const fn default_frequency() -> f64 {
     5.0
 }
 
+/// Configuration for the Monitor.
+///
+/// # Examples
+///
+/// File output only:
+/// ```toml
+/// [monitor]
+/// output = "monitor.json"
+/// frequency_secs = 5.0
+/// ```
+///
+/// Publish to message bus topic:
+/// ```toml
+/// [monitor]
+/// topic = "caryatid.monitor.snapshot"
+/// frequency_secs = 1.0
+/// ```
+///
+/// Both file and topic:
+/// ```toml
+/// [monitor]
+/// output = "monitor.json"
+/// topic = "caryatid.monitor.snapshot"
+/// frequency_secs = 5.0
+/// ```
 #[derive(Deserialize)]
 pub struct MonitorConfig {
-    output: PathBuf,
+    /// File path to write JSON snapshots (optional).
+    #[serde(default)]
+    pub output: Option<PathBuf>,
+
+    /// Topic to publish snapshots on the message bus (optional).
+    /// When configured, snapshots are published as JSON via a dedicated RabbitMQ connection.
+    #[serde(default)]
+    pub topic: Option<String>,
+
+    /// How often to emit snapshots, in seconds.
     #[serde(default = "default_frequency")]
-    frequency_secs: f64,
+    pub frequency_secs: f64,
 }
+
+/// Type alias for the publisher callback.
+/// Takes a snapshot and publishes it to the message bus.
+pub type SnapshotPublisher = Box<dyn Fn(Snapshot) + Send + Sync>;
 
 pub struct Monitor {
     modules: BTreeMap<String, Arc<ModuleState>>,
     stream_writes: Arc<DashMap<String, u64>>,
-    output_path: PathBuf,
+    output_path: Option<PathBuf>,
+    topic: Option<String>,
     write_frequency: Duration,
 }
+
 impl Monitor {
     pub fn new(config: MonitorConfig) -> Self {
         Self {
             modules: BTreeMap::new(),
             stream_writes: Arc::new(DashMap::new()),
             output_path: config.output,
+            topic: config.topic,
             write_frequency: Duration::from_secs_f64(config.frequency_secs),
         }
+    }
+
+    /// Returns the topic to publish snapshots to, if configured.
+    pub fn topic(&self) -> Option<&str> {
+        self.topic.as_deref()
     }
 
     pub fn spy_on_bus<M: MessageBounds>(
@@ -97,61 +123,94 @@ impl Monitor {
         })
     }
 
-    pub async fn monitor(self) {
+    /// Collect the current state into a snapshot.
+    fn collect_snapshot(&self) -> Snapshot {
+        let now = Instant::now();
+        let timestamp_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        let modules = self
+            .modules
+            .iter()
+            .map(|(name, state)| {
+                let reads = state
+                    .reads
+                    .iter()
+                    .map(|kvp| {
+                        let (topic, data) = kvp.pair();
+                        let count = data.read;
+                        let backlog = self
+                            .stream_writes
+                            .get(topic)
+                            .and_then(|w| w.checked_sub(count))
+                            .filter(|u| *u > 0);
+                        let pending = data.pending_since.map(|d| {
+                            Microseconds::from_micros(now.duration_since(d).as_micros() as u64)
+                        });
+                        let metrics = ReadMetrics {
+                            count,
+                            backlog,
+                            pending,
+                            rate: None,
+                        };
+                        (topic.clone(), metrics)
+                    })
+                    .collect();
+
+                let writes = state
+                    .writes
+                    .iter()
+                    .map(|kvp| {
+                        let (topic, data) = kvp.pair();
+                        let count = data.written;
+                        let pending = data.pending_since.map(|d| {
+                            Microseconds::from_micros(now.duration_since(d).as_micros() as u64)
+                        });
+                        let metrics = WriteMetrics {
+                            count,
+                            pending,
+                            rate: None,
+                        };
+                        (topic.clone(), metrics)
+                    })
+                    .collect();
+
+                (name.clone(), ModuleMetrics { reads, writes })
+            })
+            .collect();
+
+        Snapshot {
+            version: buswatch_types::SchemaVersion::current(),
+            timestamp_ms,
+            modules,
+        }
+    }
+
+    /// Run the monitor loop with an optional publisher callback.
+    ///
+    /// The publisher is called with a `Snapshot` each time a
+    /// snapshot is collected. This allows the caller to publish to a
+    /// message bus or any other destination.
+    pub async fn monitor(self, publisher: Option<SnapshotPublisher>) {
         loop {
             time::sleep(self.write_frequency).await;
-            let now = Instant::now();
-            let state = self
-                .modules
-                .iter()
-                .map(|(name, state)| {
-                    let reads = state
-                        .reads
-                        .iter()
-                        .map(|kvp| {
-                            let (topic, data) = kvp.pair();
-                            let read = data.read;
-                            let unread = self
-                                .stream_writes
-                                .get(topic)
-                                .and_then(|w| w.checked_sub(read))
-                                .filter(|u| *u > 0);
-                            let pending_for = data
-                                .pending_since
-                                .map(|d| format!("{:?}", now.duration_since(d)));
-                            let state = SerializedReadStreamState {
-                                read,
-                                unread,
-                                pending_for,
-                            };
-                            (topic.clone(), state)
-                        })
-                        .collect();
+            let snapshot = self.collect_snapshot();
 
-                    let writes = state
-                        .writes
-                        .iter()
-                        .map(|kvp| {
-                            let (topic, data) = kvp.pair();
-                            let written = data.written;
-                            let pending_for = data
-                                .pending_since
-                                .map(|d| format!("{:?}", now.duration_since(d)));
-                            let state = SerializedWriteStreamState {
-                                written,
-                                pending_for,
-                            };
-                            (topic.clone(), state)
-                        })
-                        .collect();
+            // Write to file if configured
+            if let Some(ref path) = self.output_path {
+                let serialized =
+                    serde_json::to_vec_pretty(&snapshot).expect("could not serialize state");
+                if let Err(e) = fs::write(path, &serialized).await {
+                    warn!("Failed to write monitor file: {}", e);
+                }
+            }
 
-                    (name.clone(), SerializedModuleState { reads, writes })
-                })
-                .collect::<BTreeMap<_, _>>();
-            let serialized = serde_json::to_vec_pretty(&state).expect("could not serialize state");
-            fs::write(&self.output_path, serialized)
-                .await
-                .expect("could not write file");
+            // Call publisher if provided
+            if let Some(ref publish) = publisher {
+                publish(snapshot);
+            }
         }
     }
 }
